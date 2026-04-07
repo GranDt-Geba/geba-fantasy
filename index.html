@@ -3211,11 +3211,15 @@ function openSlotModal(slotIdx, pos, teamFilter='todos', sortVal='pts') {
           ${myBenchSamePos.map(bp => {
             const bt = state.teams.find(t => t.id === bp.teamId);
             const bi = bp.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+            const bpEstado = bp.estado || 'juega';
+            const bpEstadoStr = bpEstado === 'nojuega' ? '❌ No juega' : bpEstado === 'duda' ? '⚠️ En duda' : '✅ Juega';
+            const bpEstadoColor = bpEstado === 'nojuega' ? '#FF1744' : bpEstado === 'duda' ? '#FFD600' : '#00C853';
             return '<div style="display:flex;align-items:center;gap:0.75rem;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:12px;padding:0.65rem 0.9rem;margin-bottom:0.5rem;cursor:pointer" data-tit="' + existingPid + '" data-sup="' + bp.id + '" onclick="rotateTitularSub(this.dataset.tit,this.dataset.sup)">'
               + '<div style="width:36px;height:36px;border-radius:50%;background:rgba(0,212,255,0.15);border:1.5px solid rgba(0,212,255,0.3);display:flex;align-items:center;justify-content:center;font-family:Bebas Neue,sans-serif;font-size:0.8rem;color:#00D4FF;flex-shrink:0">' + bi + '</div>'
               + '<div style="flex:1">'
               + '<div style="font-size:0.88rem;font-weight:700">' + bp.name + '</div>'
               + '<div style="font-size:0.7rem;color:var(--muted)">' + (bt ? bt.name : '') + ' · <span style="color:var(--gold);font-weight:700">$' + (bp.valor||0) + 'M</span></div>'
+              + '<div style="font-size:0.68rem;font-weight:700;color:' + bpEstadoColor + '">' + bpEstadoStr + '</div>'
               + '<div style="font-size:0.62rem;color:#00E676;font-weight:700">✓ Sin costo de transferencia</div>'
               + '</div>'
               + '<div style="font-family:Barlow Condensed,sans-serif;font-size:0.65rem;font-weight:700;background:rgba(0,212,255,0.15);color:#00D4FF;border:1px solid rgba(0,212,255,0.3);border-radius:20px;padding:0.1rem 0.5rem;flex-shrink:0">↕️ Rotar</div>'
@@ -3239,10 +3243,17 @@ function openSlotModal(slotIdx, pos, teamFilter='todos', sortVal='pts') {
               const subs = state.dtSubs[d.id] || {};
               return roster.includes(p.id) || Object.values(subs).includes(p.id);
             }).length;
+            const pEstado = p.estado || 'juega';
+            const pEstadoBadge = pEstado === 'nojuega'
+              ? '<span style="color:#FF1744;font-size:0.68rem;font-weight:700">❌ No juega</span>'
+              : pEstado === 'duda'
+              ? '<span style="color:#FFD600;font-size:0.68rem;font-weight:700">⚠️ En duda</span>'
+              : '<span style="color:#00C853;font-size:0.68rem;font-weight:700">✅ Juega</span>';
             return `<div class="player-item" onclick="${canAfford || !state.mercadoAbierto ? `addToTeam('${p.id}')` : `alert('No tenés saldo suficiente para fichar a ${p.name}')`}" style="${!canAfford && state.mercadoAbierto?'opacity:0.5':''}">
               <div class="player-info">
                 <div class="player-name">${p.name} ${!canAfford && state.mercadoAbierto ? '<span style="color:var(--red);font-size:0.7rem">Sin saldo</span>' : ''}</div>
                 <div class="player-meta">${team?team.name:'Sin equipo'} ${dtCount > 0 ? `<span style="color:#90CAF9;font-size:0.68rem;margin-left:0.3rem">· en ${dtCount} equipo${dtCount>1?'s':''}</span>` : `<span style="color:#ff6b6b;font-size:0.68rem;margin-left:0.3rem">· no estás en ningún equipo burro</span>`}</div>
+                <div style="margin-top:0.15rem">${pEstadoBadge}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-family:'Barlow Condensed',sans-serif;font-size:1rem;font-weight:700;color:var(--gold)">${p.valor ? '$'+p.valor+'M' : '—'}</div>
@@ -3379,10 +3390,17 @@ function openSubModal(pos, teamFilter='todos', sortVal='pts') {
           const s = state.dtSubs[d.id] || {};
           return r.includes(p.id) || Object.values(s).includes(p.id);
         }).length;
+        const subEstado = p.estado || 'juega';
+        const subEstadoBadge = subEstado === 'nojuega'
+          ? '<span style="color:#FF1744;font-size:0.68rem;font-weight:700">❌ No juega</span>'
+          : subEstado === 'duda'
+          ? '<span style="color:#FFD600;font-size:0.68rem;font-weight:700">⚠️ En duda</span>'
+          : '<span style="color:#00C853;font-size:0.68rem;font-weight:700">✅ Juega</span>';
         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--border)">
           <div>
             <div style="font-weight:700">${p.name}</div>
             <div style="font-size:0.75rem;color:var(--muted)">${team ? team.name : ''} · <span class="badge ${getBadgeClass(p.pos)}">${p.pos}</span> · <span style="color:var(--gold)">$${p.valor||'—'}M</span></div>
+            <div style="font-size:0.68rem;margin-top:0.15rem">${subEstadoBadge}</div>
             <div style="font-size:0.68rem;margin-top:0.1rem">${dtCountSub > 0 ? `<span style="color:#90CAF9">· en ${dtCountSub} equipo${dtCountSub>1?'s':''}</span>` : `<span style="color:#ff6b6b">· no estás en ningún equipo burro</span>`}</div>
           </div>
           <button class="btn btn-primary btn-sm" onclick="assignSub('${pos}','${p.id}')" ${canAfford?'':'disabled style="opacity:0.4"'}>
