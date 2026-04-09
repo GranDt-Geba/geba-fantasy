@@ -901,7 +901,9 @@ function isDtHabilitado(dtId, fechaNum) {
   // Buscar con string y número por si las claves no coinciden de tipo
   const pagosObj = state.dtPagos || {};
   const pagos = pagosObj[fechaNum] || pagosObj[String(fechaNum)] || pagosObj[Number(fechaNum)] || {};
-  return !!(pagos[dtId] && pagos[dtId].habilitado);
+  // Si no hay registro → habilitado por defecto; solo se bloquea si explícitamente habilitado:false
+  if (!pagos[dtId]) return true;
+  return pagos[dtId].habilitado !== false;
 }
 
 function calcDtMatchPts(dtId, matchId) {
