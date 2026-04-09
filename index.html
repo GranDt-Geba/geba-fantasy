@@ -913,13 +913,12 @@ function calcDtMatchPts(dtId, matchId) {
   const history = fechaNum && state.dtRosterHistory && state.dtRosterHistory[dtId] && state.dtRosterHistory[dtId][fechaNum];
   if (history) {
     const histRoster = history.roster || [];
-    // Mezclar subs del snapshot con subs actuales — el actual gana si el snapshot no tiene esa posición
-    // Siempre usar suplentes ACTUALES — el snapshot solo guarda los titulares
-    const currentSubs = state.dtSubs[dtId] || {};
-    const validSubs = Object.values(currentSubs).filter(Boolean);
+    // Usar suplentes del snapshot histórico; fallback a actuales si el snapshot no los tiene
+    const histSubs = (history.subs && Object.keys(history.subs).length >= 4) ? history.subs : (state.dtSubs[dtId] || {});
+    const validSubs = Object.values(histSubs).filter(Boolean);
     if (histRoster.length < 11 || validSubs.length < 4) return 0;
     const captainId = history.captain || state.dtCaptains[dtId] || null;
-    const lineup = resolveLineupFromRoster(histRoster, currentSubs, captainId, matchId);
+    const lineup = resolveLineupFromRoster(histRoster, histSubs, captainId, matchId);
     return lineup.reduce((sum, entry) => {
       const pts = calcPlayerMatchPts(entry.pid, matchId);
       const clarinExtra = entry.isCaptain ? calcPlayerMatchClarinPts(entry.pid, matchId) : 0;
