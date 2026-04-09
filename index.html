@@ -901,15 +901,7 @@ function isDtHabilitado(dtId, fechaNum) {
   // Buscar con string y número por si las claves no coinciden de tipo
   const pagosObj = state.dtPagos || {};
   const pagos = pagosObj[fechaNum] || pagosObj[String(fechaNum)] || pagosObj[Number(fechaNum)] || {};
-  // Si hay registro explícito de pago, respetar ese estado
-  if (pagos[dtId]) return !!(pagos[dtId].habilitado);
-  // Para fechas pasadas (no la activa): si completó su equipo en esa fecha o antes → participó → habilitado
-  const isCurrentFecha = String(fechaNum) === String(state.activeFecha);
-  if (!isCurrentFecha) {
-    const fechaCompletado = Number((state.dtFechaCompletado || {})[dtId] || 0);
-    if (fechaCompletado > 0 && fechaCompletado <= Number(fechaNum)) return true;
-  }
-  return false;
+  return !!(pagos[dtId] && pagos[dtId].habilitado);
 }
 
 function calcDtMatchPts(dtId, matchId) {
