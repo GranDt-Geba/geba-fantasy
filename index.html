@@ -1909,22 +1909,27 @@ function renderAdminMercado() {
         const pagosF = (state.dtPagos || {})[f] || {};
         const habilitados = state.dts.filter(d => pagosF[d.id] && pagosF[d.id].habilitado);
         const noHabilitados = state.dts.filter(d => !(pagosF[d.id] && pagosF[d.id].habilitado));
-        const expandId = 'hab-pasada-' + f;
+        const isOpen = !!habPasadaExpanded[f];
         return `<div class="card" style="border-color:#FFD60033">
-          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="const el=document.getElementById('${expandId}');el.style.display=el.style.display==='none'?'block':'none'">
+          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="habPasadaExpanded['${f}']=!habPasadaExpanded['${f}'];renderAdminMercado()">
             <span>🔓 Habilitaciones — Fecha ${f} (pasada)</span>
-            <span style="font-size:0.75rem;color:var(--muted)">mostrar/ocultar</span>
+            <span style="font-size:0.75rem;color:var(--muted)">${isOpen ? '▲ cerrar' : '▼ abrir'}</span>
           </div>
-          <div id="${expandId}" style="display:none">
+          ${isOpen ? `<div>
           <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">Corregí habilitaciones sin cambiar la fecha activa.</p>
           ${noHabilitados.length > 0 ? `
           <div style="margin-bottom:0.75rem">
-            <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.4rem">No habilitados</div>
-            <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.4rem">
-              ${noHabilitados.map(d => `<button class="btn btn-secondary btn-sm" onclick="habilitarDtParaFecha('${d.id}','${f}')">${d.name}</button>`).join('')}
+            <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem">No habilitados — seleccioná y habilitá</div>
+            ${noHabilitados.map(d => `
+              <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;cursor:pointer">
+                <input type="checkbox" id="habcheck-${f}-${d.id}" style="width:16px;height:16px;cursor:pointer">
+                <span>${d.name}</span>
+              </label>`).join('')}
+            <div style="display:flex;gap:0.4rem;margin-top:0.6rem;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" onclick="habilitarSeleccionadosParaFecha('${f}')">✓ Habilitar seleccionados</button>
+              <button class="btn btn-secondary btn-sm" onclick="habilitarTodosParaFecha('${f}')">✓ Habilitar todos</button>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="habilitarTodosParaFecha('${f}')">✓ Habilitar todos</button>
-          </div>` : ''}
+          </div>` : '<div style="color:var(--green);font-size:0.85rem;margin-bottom:0.75rem">✅ Todos habilitados</div>'}
           ${habilitados.length > 0 ? `
           <div>
             <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.4rem">Habilitados ✅</div>
@@ -1932,7 +1937,7 @@ function renderAdminMercado() {
               ${habilitados.map(d => `<button class="btn btn-secondary btn-sm" style="opacity:0.6" onclick="deshabilitarDtParaFecha('${d.id}','${f}')">${d.name} ✕</button>`).join('')}
             </div>
           </div>` : ''}
-          </div>
+          </div>` : ''}
         </div>`;
       }).join('');
     })()}
@@ -2088,13 +2093,29 @@ function resetTransferencias() {
 
 function habilitarDtParaFecha(dtId, fechaNum) {
   const dt = state.dts.find(d => d.id === dtId);
-  if (!confirm('¿Habilitar a ' + (dt?dt.name:dtId) + ' para Fecha ' + fechaNum + '?')) return;
   if (!state.dtPagos) state.dtPagos = {};
   if (!state.dtPagos[fechaNum]) state.dtPagos[fechaNum] = {};
   state.dtPagos[fechaNum][dtId] = { nombre: dt?dt.name:'', msg: 'Habilitado manualmente por Admin', ts: new Date().toLocaleDateString('es-AR'), habilitado: true };
   const pagoKey = 'dtPagos.' + fechaNum + '.' + dtId;
   DB_DOC.update({ [pagoKey]: state.dtPagos[fechaNum][dtId] })
     .catch(e => console.error('Error:', e));
+  habPasadaExpanded[fechaNum] = true;
+  renderAdminMercado();
+}
+
+function habilitarSeleccionadosParaFecha(fechaNum) {
+  const checkboxes = document.querySelectorAll(`[id^="habcheck-${fechaNum}-"]:checked`);
+  if (checkboxes.length === 0) { alert('Seleccioná al menos un DT'); return; }
+  if (!state.dtPagos) state.dtPagos = {};
+  if (!state.dtPagos[fechaNum]) state.dtPagos[fechaNum] = {};
+  const updates = {};
+  checkboxes.forEach(cb => {
+    const dtId = cb.id.replace('habcheck-' + fechaNum + '-', '');
+    const dt = state.dts.find(d => d.id === dtId);
+    state.dtPagos[fechaNum][dtId] = { nombre: dt?dt.name:'', msg: 'Habilitado manualmente por Admin', ts: new Date().toLocaleDateString('es-AR'), habilitado: true };
+    updates['dtPagos.' + fechaNum + '.' + dtId] = state.dtPagos[fechaNum][dtId];
+  });
+  DB_DOC.update(updates).catch(e => console.error('Error:', e));
   renderAdminMercado();
 }
 
@@ -4267,6 +4288,7 @@ function renderDtRecomendaciones() {
 
 // ==================== HISTORIAL POR FECHA ====================
 let rankingFechaFilter = null; // null = general
+let habPasadaExpanded = {}; // { fechaNum: true/false }
 
 function renderDtRanking(fechaFilter) {
   if (fechaFilter !== undefined) rankingFechaFilter = fechaFilter;
