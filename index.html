@@ -901,9 +901,16 @@ function isDtHabilitado(dtId, fechaNum) {
   // Buscar con string y número por si las claves no coinciden de tipo
   const pagosObj = state.dtPagos || {};
   const pagos = pagosObj[fechaNum] || pagosObj[String(fechaNum)] || pagosObj[Number(fechaNum)] || {};
-  // Si no hay registro → habilitado por defecto; solo se bloquea si explícitamente habilitado:false
-  if (!pagos[dtId]) return true;
-  return pagos[dtId].habilitado !== false;
+  // Si hay registro explícito de pago, respetar ese estado
+  if (pagos[dtId]) return !!(pagos[dtId].habilitado);
+  // Para fechas pasadas (no la activa): si tiene snapshot válido, participó → habilitado
+  const isCurrentFecha = String(fechaNum) === String(state.activeFecha);
+  if (!isCurrentFecha) {
+    const history = (state.dtRosterHistory || {})[dtId] || {};
+    const snap = history[fechaNum] || history[String(fechaNum)];
+    if (snap && (snap.roster || []).length >= 11) return true;
+  }
+  return false;
 }
 
 function calcDtMatchPts(dtId, matchId) {
