@@ -903,12 +903,11 @@ function isDtHabilitado(dtId, fechaNum) {
   const pagos = pagosObj[fechaNum] || pagosObj[String(fechaNum)] || pagosObj[Number(fechaNum)] || {};
   // Si hay registro explícito de pago, respetar ese estado
   if (pagos[dtId]) return !!(pagos[dtId].habilitado);
-  // Para fechas pasadas (no la activa): si tiene snapshot válido, participó → habilitado
+  // Para fechas pasadas (no la activa): si completó su equipo en esa fecha o antes → participó → habilitado
   const isCurrentFecha = String(fechaNum) === String(state.activeFecha);
   if (!isCurrentFecha) {
-    const history = (state.dtRosterHistory || {})[dtId] || {};
-    const snap = history[fechaNum] || history[String(fechaNum)];
-    if (snap && (snap.roster || []).length >= 11) return true;
+    const fechaCompletado = Number((state.dtFechaCompletado || {})[dtId] || 0);
+    if (fechaCompletado > 0 && fechaCompletado <= Number(fechaNum)) return true;
   }
   return false;
 }
