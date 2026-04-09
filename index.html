@@ -1909,9 +1909,14 @@ function renderAdminMercado() {
         const pagosF = (state.dtPagos || {})[f] || {};
         const habilitados = state.dts.filter(d => pagosF[d.id] && pagosF[d.id].habilitado);
         const noHabilitados = state.dts.filter(d => !(pagosF[d.id] && pagosF[d.id].habilitado));
+        const expandId = 'hab-pasada-' + f;
         return `<div class="card" style="border-color:#FFD60033">
-          <div class="card-title">🔓 Habilitaciones — Fecha ${f} (pasada)</div>
-          <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">Podés corregir habilitaciones de fechas pasadas sin cambiar la fecha activa.</p>
+          <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="const el=document.getElementById('${expandId}');el.style.display=el.style.display==='none'?'block':'none'">
+            <span>🔓 Habilitaciones — Fecha ${f} (pasada)</span>
+            <span style="font-size:0.75rem;color:var(--muted)">mostrar/ocultar</span>
+          </div>
+          <div id="${expandId}" style="display:none">
+          <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">Corregí habilitaciones sin cambiar la fecha activa.</p>
           ${noHabilitados.length > 0 ? `
           <div style="margin-bottom:0.75rem">
             <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.4rem">No habilitados</div>
@@ -1927,6 +1932,7 @@ function renderAdminMercado() {
               ${habilitados.map(d => `<button class="btn btn-secondary btn-sm" style="opacity:0.6" onclick="deshabilitarDtParaFecha('${d.id}','${f}')">${d.name} ✕</button>`).join('')}
             </div>
           </div>` : ''}
+          </div>
         </div>`;
       }).join('');
     })()}
