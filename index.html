@@ -1900,6 +1900,36 @@ function renderAdminMercado() {
       <div class="card-title">💰 Presupuesto por DT</div>
       <div style="font-size:1.5rem;font-weight:700;color:var(--gold);font-family:'Barlow Condensed',sans-serif">$${BUDGET}M por DT</div>
     </div>
+    ${(() => {
+      const fechasPasadas = [...new Set(state.matches.map(m => m.fechaNum).filter(Boolean))]
+        .sort((a,b) => Number(a)-Number(b))
+        .filter(f => String(f) !== String(state.activeFecha));
+      if (fechasPasadas.length === 0) return '';
+      return fechasPasadas.map(f => {
+        const pagosF = (state.dtPagos || {})[f] || {};
+        const habilitados = state.dts.filter(d => pagosF[d.id] && pagosF[d.id].habilitado);
+        const noHabilitados = state.dts.filter(d => !(pagosF[d.id] && pagosF[d.id].habilitado));
+        return `<div class="card" style="border-color:#FFD60033">
+          <div class="card-title">🔓 Habilitaciones — Fecha ${f} (pasada)</div>
+          <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem">Podés corregir habilitaciones de fechas pasadas sin cambiar la fecha activa.</p>
+          ${noHabilitados.length > 0 ? `
+          <div style="margin-bottom:0.75rem">
+            <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.4rem">No habilitados</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.4rem">
+              ${noHabilitados.map(d => `<button class="btn btn-secondary btn-sm" onclick="habilitarDtParaFecha('${d.id}','${f}')">${d.name}</button>`).join('')}
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="habilitarTodosParaFecha('${f}')">✓ Habilitar todos</button>
+          </div>` : ''}
+          ${habilitados.length > 0 ? `
+          <div>
+            <div style="font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.4rem">Habilitados ✅</div>
+            <div style="display:flex;flex-wrap:wrap;gap:0.3rem">
+              ${habilitados.map(d => `<button class="btn btn-secondary btn-sm" style="opacity:0.6" onclick="deshabilitarDtParaFecha('${d.id}','${f}')">${d.name} ✕</button>`).join('')}
+            </div>
+          </div>` : ''}
+        </div>`;
+      }).join('');
+    })()}
     <div class="card">
       <div class="card-title">💰 Avisos de pago — Fecha ${state.activeFecha || '—'}</div>
       ${!state.activeFecha ? '<div style="color:var(--muted);font-size:0.85rem">No hay fecha activa.</div>' : (() => {
@@ -2047,6 +2077,40 @@ function resetTransferencias() {
     }
   });
   save();
+  renderAdminMercado();
+}
+
+function habilitarDtParaFecha(dtId, fechaNum) {
+  const dt = state.dts.find(d => d.id === dtId);
+  if (!confirm('¿Habilitar a ' + (dt?dt.name:dtId) + ' para Fecha ' + fechaNum + '?')) return;
+  if (!state.dtPagos) state.dtPagos = {};
+  if (!state.dtPagos[fechaNum]) state.dtPagos[fechaNum] = {};
+  state.dtPagos[fechaNum][dtId] = { nombre: dt?dt.name:'', msg: 'Habilitado manualmente por Admin', ts: new Date().toLocaleDateString('es-AR'), habilitado: true };
+  const pagoKey = 'dtPagos.' + fechaNum + '.' + dtId;
+  DB_DOC.update({ [pagoKey]: state.dtPagos[fechaNum][dtId] })
+    .catch(e => console.error('Error:', e));
+  renderAdminMercado();
+}
+
+function habilitarTodosParaFecha(fechaNum) {
+  if (!confirm('¿Habilitar a TODOS los DTs para Fecha ' + fechaNum + '? Solo los que no están habilitados.')) return;
+  if (!state.dtPagos) state.dtPagos = {};
+  if (!state.dtPagos[fechaNum]) state.dtPagos[fechaNum] = {};
+  const updates = {};
+  state.dts.forEach(d => {
+    if (!(state.dtPagos[fechaNum][d.id] && state.dtPagos[fechaNum][d.id].habilitado)) {
+      state.dtPagos[fechaNum][d.id] = { nombre: d.name, msg: 'Habilitado manualmente por Admin', ts: new Date().toLocaleDateString('es-AR'), habilitado: true };
+      updates['dtPagos.' + fechaNum + '.' + d.id] = state.dtPagos[fechaNum][d.id];
+    }
+  });
+  DB_DOC.update(updates).catch(e => console.error('Error:', e));
+  renderAdminMercado();
+}
+
+function deshabilitarDtParaFecha(dtId, fechaNum) {
+  if (!state.dtPagos || !state.dtPagos[fechaNum] || !state.dtPagos[fechaNum][dtId]) return;
+  state.dtPagos[fechaNum][dtId].habilitado = false;
+  DB_DOC.update({ dtPagos: state.dtPagos }).catch(e => console.error('Error:', e));
   renderAdminMercado();
 }
 
