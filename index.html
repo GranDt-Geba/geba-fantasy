@@ -2773,6 +2773,7 @@ function renderDt(tab) {
       <button class="tab ${dtTab==='recomendaciones'?'active':''}" onclick="renderDt('recomendaciones')">💡 Recomendaciones</button>
       <button class="tab ${dtTab==='ranking'?'active':''}" onclick="renderDt('ranking')">🏆 Ranking</button>
       <button class="tab ${dtTab==='fixture'?'active':''}" onclick="renderDt('fixture')">📅 Fixture</button>
+      <button class="tab ${dtTab==='puntajes'?'active':''}" onclick="renderDt('puntajes')">⭐ Puntajes</button>
     </div>
     <div id="tab-content"></div>`;
   if (dtTab === 'equipo') renderDtEquipo();
@@ -2782,6 +2783,7 @@ function renderDt(tab) {
   if (dtTab === 'recomendaciones') renderDtRecomendaciones();
   if (dtTab === 'fixture') renderDtFixture();
   if (dtTab === 'historial') renderDtHistorial();
+  if (dtTab === 'puntajes') renderDtPuntajes();
 }
 
 function getDtRoster() {
@@ -4289,6 +4291,7 @@ function renderDtRecomendaciones() {
 // ==================== HISTORIAL POR FECHA ====================
 let rankingFechaFilter = null; // null = general
 let habPasadaExpanded = {}; // { fechaNum: true/false }
+let puntajesState = { fechaFilter: 'todas', teamFilter: 'todos', posFilter: 'todos' };
 
 function renderDtRanking(fechaFilter) {
   if (fechaFilter !== undefined) rankingFechaFilter = fechaFilter;
@@ -4333,6 +4336,74 @@ function renderDtRanking(fechaFilter) {
     </div>`;
 }
 
+function renderDtPuntajes() {
+  const tc = document.getElementById('tab-content');
+  const fechas = [...new Set(state.matches.map(m => m.fechaNum).filter(Boolean))].sort((a,b) => Number(a)-Number(b));
+  const posiciones = ['Arquero','Defensor','Mediocampista','Delantero'];
+  const { fechaFilter, teamFilter, posFilter } = puntajesState;
+
+  // Filtrar jugadores
+  let jugadores = [...state.players];
+  if (posFilter !== 'todos') jugadores = jugadores.filter(p => p.pos === posFilter);
+  if (teamFilter !== 'todos') jugadores = jugadores.filter(p => p.teamId === teamFilter);
+
+  // Calcular puntos según filtro de fecha
+  const getPts = (p) => {
+    if (fechaFilter === 'todas') return calcPlayerTotalPts(p.id);
+    return calcPlayerFechaPts(p.id, fechaFilter);
+  };
+
+  jugadores = jugadores.sort((a,b) => getPts(b) - getPts(a));
+
+  const fechaChips = `
+    <div class="filter-chip ${fechaFilter==='todas'?'active':''}" onclick="puntajesState.fechaFilter='todas';renderDtPuntajes()">Todas</div>
+    ${fechas.map(f => `<div class="filter-chip ${fechaFilter===f?'active':''}" onclick="puntajesState.fechaFilter='${f}';renderDtPuntajes()">F${f}</div>`).join('')}`;
+
+  const teamChips = `
+    <div class="filter-chip ${teamFilter==='todos'?'active':''}" onclick="puntajesState.teamFilter='todos';renderDtPuntajes()">Todos</div>
+    ${state.teams.map(t => `<div class="filter-chip ${teamFilter===t.id?'active':''}" onclick="puntajesState.teamFilter='${t.id}';renderDtPuntajes()">${t.name}</div>`).join('')}`;
+
+  const posChips = `
+    <div class="filter-chip ${posFilter==='todos'?'active':''}" onclick="puntajesState.posFilter='todos';renderDtPuntajes()">Todos</div>
+    ${posiciones.map(pos => `<div class="filter-chip ${posFilter===pos?'active':''}" onclick="puntajesState.posFilter='${pos}';renderDtPuntajes()">${pos}</div>`).join('')}`;
+
+  const rows = jugadores.map(p => {
+    const team = state.teams.find(t => t.id === p.teamId);
+    const pts = getPts(p);
+    const estado = p.estado || 'juega';
+    const estadoColor = estado==='nojuega'?'#FF1744':estado==='duda'?'#FFD600':'#00C853';
+    const estadoBadge = estado==='nojuega'?'❌ No juega':estado==='duda'?'⚠️ Duda':'✅ Juega';
+    // Desglose por fecha si se muestra todas
+    const desglose = fechaFilter === 'todas' && fechas.length > 1
+      ? `<div style="font-size:0.65rem;color:var(--muted);margin-top:0.15rem">${fechas.map(f => `F${f}: ${calcPlayerFechaPts(p.id, f)}`).join(' · ')}</div>`
+      : '';
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:0.9rem">${p.name}</div>
+        <div style="font-size:0.72rem;color:var(--muted)">${team?team.name:''} · <span class="badge ${getBadgeClass(p.pos)}">${p.pos}</span></div>
+        <div style="font-size:0.65rem;color:${estadoColor};font-weight:600;margin-top:0.1rem">${estadoBadge}</div>
+        ${desglose}
+      </div>
+      <div style="text-align:right;min-width:48px">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.4rem;font-weight:700;color:var(--gold);line-height:1">${pts}</div>
+        <div style="font-size:0.62rem;color:var(--muted)">${fechaFilter==='todas'?'total':'F'+fechaFilter}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  tc.innerHTML = `
+    <div class="card">
+      <div class="card-title">⭐ Puntajes de Jugadores</div>
+      <div style="font-size:0.72rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.35rem">Fecha</div>
+      <div class="filter-bar" style="margin-bottom:0.75rem">${fechaChips}</div>
+      <div style="font-size:0.72rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.35rem">Equipo</div>
+      <div class="filter-bar" style="margin-bottom:0.75rem">${teamChips}</div>
+      <div style="font-size:0.72rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.35rem">Posición</div>
+      <div class="filter-bar" style="margin-bottom:1rem">${posChips}</div>
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.5rem">${jugadores.length} jugador${jugadores.length!==1?'es':''}</div>
+      ${jugadores.length === 0 ? '<div class="empty-state"><p>No hay jugadores con ese filtro.</p></div>' : `<div>${rows}</div>`}
+    </div>`;
+}
 </script>
 </body>
 </html>
