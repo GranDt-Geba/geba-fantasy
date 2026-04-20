@@ -2991,6 +2991,10 @@ function renderDtEquipo() {
 
       const isCaptain = p && p.id === captainId;
       const fPts = p ? playerViewPts(p.id) : 0;
+      const clarinFecha = (isCaptain && viewFecha && p)
+        ? state.matches.filter(m => m.fechaNum === viewFecha).reduce((s, m) => s + calcPlayerMatchClarinPts(p.id, m.id), 0)
+        : 0;
+      const displayFPts = fPts + clarinFecha;
       const tPts = p ? calcPlayerTotalPts(p.id) : 0;
 
       if (showingSub) {
@@ -3027,7 +3031,7 @@ function renderDtEquipo() {
               ${p && state.teams.find(t=>t.id===p.teamId) ? `<div class="slot-team-name">${state.teams.find(t=>t.id===p.teamId).name}</div>` : ''}
           ${p ? `
             <div style="font-size:0.45rem;color:${estadoColor};font-weight:700">${estado==='duda'?'⚠ duda':estado==='nojuega'?'✗ no juega':''}</div>
-            <div class="slot-pts" style="color:${fPts>0?'#00C853':fPts<0?'#FF1744':'#6A8F6A'}">${viewFecha?(fPts>0?'+':'')+fPts+(isCaptain?' 🅲':''):'—'}</div>
+            <div class="slot-pts" style="color:${displayFPts>0?'#00C853':displayFPts<0?'#FF1744':'#6A8F6A'}">${viewFecha?(displayFPts>0?'+':'')+displayFPts+(isCaptain?' 🅲':''):'—'}</div>
             <div style="font-size:0.55rem;color:var(--muted)">${isCaptain ? tPts + calcPlayerTotalClarinPts(p.id) : tPts} total</div>
           ` : `<div class="slot-team" style="font-size:0.58rem;color:var(--border)">vacío</div>`}
         </div>`;
