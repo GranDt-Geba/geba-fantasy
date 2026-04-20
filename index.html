@@ -3427,6 +3427,8 @@ function addToTeam(playerId) {
   // Ejecutar el swap
   if (isSwap) {
     state.dtTeams[currentDtId] = roster.filter(id => id !== lastSwappedOut);
+    // Si el que sale era capitán, el que entra pasa a ser capitán
+    if (state.dtCaptains[currentDtId] === lastSwappedOut) state.dtCaptains[currentDtId] = playerId;
     if (state.mercadoAbierto && p) {
       state.transfers = state.transfers || [];
       state.transfers.push({ dtId: currentDtId, playerId, playerName: p.name, type: 'fichar', valor: p.valor||0, fecha: new Date().toLocaleDateString('es-AR') });
@@ -3619,6 +3621,8 @@ function removeFromTeam(playerId) {
     });
   }
   state.dtTeams[currentDtId] = state.dtTeams[currentDtId].filter(id => id !== playerId);
+  // Si era el capitán, limpiar capitanía
+  if (state.dtCaptains[currentDtId] === playerId) delete state.dtCaptains[currentDtId];
   registerDtTransfer(currentDtId);
   lastSwappedOut = null;
   uncheckTeamComplete(currentDtId);
