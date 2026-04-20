@@ -2238,18 +2238,45 @@ function editFechaCompletado(dtId, dtName, currentFecha) {
   renderAdmin('dts');
 }
 
-function openVerEquipoDt(dtId, dtName) {
-  const roster = state.dtTeams[dtId] || [];
-  const subs = state.dtSubs[dtId] || {};
-  const captainId = state.dtCaptains[dtId] || null;
-  const formation = (() => { const d = state.dts.find(x=>x.id===dtId); return (d&&d.formation)||'4-3-3'; })();
+function openVerEquipoDt(dtId, dtName, viewFecha) {
+  const activeFecha = state.activeFecha || 1;
+  const vf = viewFecha != null ? Number(viewFecha) : activeFecha;
+  const isCurrentFecha = vf === activeFecha;
 
-  function playerRow(pid, esSub, pos) {
+  // Determine roster/subs/captain/formation for the viewed fecha
+  let roster, subs, captainId, formation;
+  if (isCurrentFecha) {
+    roster = state.dtTeams[dtId] || [];
+    subs = state.dtSubs[dtId] || {};
+    captainId = state.dtCaptains[dtId] || null;
+    formation = (() => { const d = state.dts.find(x=>x.id===dtId); return (d&&d.formation)||'4-3-3'; })();
+  } else {
+    const hist = ((state.dtRosterHistory||{})[dtId]||{})[vf] || {};
+    roster = hist.roster || [];
+    subs = hist.subs || {};
+    captainId = hist.captain || null;
+    formation = hist.formation || '4-3-3';
+  }
+
+  // Build fecha tabs (all fechas that have history + current)
+  const histFechas = Object.keys((state.dtRosterHistory||{})[dtId]||{}).map(Number).sort((a,b)=>a-b);
+  const tabFechas = [...new Set([...histFechas, activeFecha])].sort((a,b)=>a-b);
+
+  const tabsHtml = tabFechas.length > 1 ? `
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1rem">
+      ${tabFechas.map(f => `<button class="btn ${f===vf?'btn-primary':'btn-secondary'} btn-sm"
+        onclick="openVerEquipoDt('${dtId}','${dtName}',${f})"
+        style="font-size:0.8rem">
+        Fecha ${f}${f===activeFecha?' <span style=\'color:var(--green);font-size:0.7rem\'>(actual)</span>':''}
+      </button>`).join('')}
+    </div>` : '';
+
+  function playerRow(pid, esSub) {
     const p = state.players.find(pl => pl.id === pid);
     if (!p) return '';
     const team = state.teams.find(t => t.id === p.teamId);
     const isCap = pid === captainId;
-    const pts = calcPlayerTotalPts(pid);
+    const pts = isCurrentFecha ? calcPlayerTotalPts(pid) : calcPlayerFechaPts(pid, vf);
     return `<tr style="${esSub?'opacity:0.7':''}">
       <td>${esSub?'🪑':''}${isCap?'🅲 ':''}<strong style="color:${isCap?'#00E5FF':'inherit'}">${p.name}</strong></td>
       <td><span class="badge ${getBadgeClass(p.pos)}">${p.pos}</span></td>
@@ -2260,25 +2287,32 @@ function openVerEquipoDt(dtId, dtName) {
   }
 
   const titularRows = roster.map(pid => playerRow(pid, false)).join('');
-  const subRows = Object.entries(subs).map(([pos, pid]) => playerRow(pid, true, pos)).join('');
+  const subRows = Object.entries(subs).map(([, pid]) => playerRow(pid, true)).join('');
   const spent = getDtSpent(dtId);
   const left = getDtBudgetLeft(dtId);
   const totalPts = calcDtPts(dtId);
   const fc = (state.dtFechaCompletado||{})[dtId];
 
+  const fechaLabel = isCurrentFecha
+    ? `<span style="color:var(--green);font-size:0.8rem;font-weight:600">Equipo actual — Fecha ${vf}</span>`
+    : `<span style="color:var(--gold);font-size:0.8rem;font-weight:600">Historial — Fecha ${vf}</span>`;
+
   document.getElementById('modal-container').innerHTML = `
     <div class="modal-overlay" onclick="closeModal()">
       <div class="modal" onclick="event.stopPropagation()" style="max-width:560px">
         <div class="modal-title">👁️ Equipo de ${dtName}</div>
+        <div style="margin-bottom:0.75rem">${fechaLabel}</div>
+        ${tabsHtml}
         <div class="stat-row" style="margin-bottom:1rem">
           <div class="stat-chip">Esquema: <span style="color:var(--green)">${formation}</span></div>
           <div class="stat-chip">Jugadores: <span style="color:${roster.length+Object.values(subs).length>=15?'var(--green)':'var(--gold)'}">${roster.length+Object.values(subs).length}/15</span></div>
+          ${isCurrentFecha ? `
           <div class="stat-chip">Gastado: <span style="color:var(--red)">$${spent}M</span></div>
           <div class="stat-chip">Saldo: <span style="color:${left<10?'var(--red)':'var(--green)'}">$${left}M</span></div>
-          <div class="stat-chip">Puntos: <span style="color:var(--gold)">${totalPts}</span></div>
-          ${fc ? `<div class="stat-chip">Completó: <span style="color:var(--gold)">Fecha ${fc}</span></div>` : ''}
+          <div class="stat-chip">Puntos totales: <span style="color:var(--gold)">${totalPts}</span></div>
+          ${fc ? `<div class="stat-chip">Completó: <span style="color:var(--gold)">Fecha ${fc}</span></div>` : ''}` : ''}
         </div>
-        ${roster.length === 0 ? '<div class="empty-state"><p>Sin jugadores</p></div>' : `
+        ${roster.length === 0 ? '<div class="empty-state"><p>Sin jugadores registrados para esta fecha</p></div>' : `
         <table class="data-table">
           <thead><tr><th>Jugador</th><th>Pos</th><th>Equipo</th><th>Valor</th><th>Pts</th></tr></thead>
           <tbody>
