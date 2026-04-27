@@ -2554,8 +2554,8 @@ function saveAndCloseScoring() {
   state.scores[pid][mid] = scores;
   pendingSavedScores.set(protKey, scores);
 
-  const key = 'scores.' + pid + '.' + mid;
-  DB_DOC.update({ [key]: scores })
+  const scorePath = new firebase.firestore.FieldPath('scores', pid, mid);
+  DB_DOC.update(scorePath, scores)
     .then(() => {
       pendingSavedScores.delete(protKey);
       showToast('Puntaje guardado ✓', 'green');
