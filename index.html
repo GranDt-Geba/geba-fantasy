@@ -537,6 +537,7 @@ let state = {
 let saveTimeout = null;
 let saveSubsTimeout = null;
 let isSaving = false;
+const dirtyScores = new Set(); // 'playerId:matchId' — protege cambios locales pendientes de onSnapshot
 
 function save() {
   clearTimeout(saveTimeout);
@@ -640,7 +641,22 @@ async function initApp() {
       state.players        = d.players    || [];
       state.teams          = d.teams      || [];
       state.matches        = d.matches    || [];
-      state.scores         = d.scores     || {};
+      // Merge scores: preserve dirty entries (local pending writes) so onSnapshot
+      // doesn't overwrite changes not yet confirmed by the server
+      {
+        const remoteScores = d.scores || {};
+        const merged = JSON.parse(JSON.stringify(remoteScores));
+        for (const key of dirtyScores) {
+          const sep = key.indexOf(':');
+          const pid = key.slice(0, sep);
+          const mid = key.slice(sep + 1);
+          if (state.scores[pid] && state.scores[pid][mid]) {
+            if (!merged[pid]) merged[pid] = {};
+            merged[pid][mid] = state.scores[pid][mid];
+          }
+        }
+        state.scores = merged;
+      }
       state.dts            = d.dts        || [];
       const prevActiva = state.activeFecha;
       state.activeFecha    = d.activeFecha|| null;
@@ -2530,10 +2546,15 @@ function changeAction(playerId, matchId, actionId, delta) {
   const cur = state.scores[playerId][matchId][actionId] || 0;
   const newVal = Math.max(0, cur + delta);
   state.scores[playerId][matchId][actionId] = newVal;
-  const scoreKey = 'scores.' + playerId + '.' + matchId + '.' + actionId;
-  DB_DOC.update({ [scoreKey]: newVal }).catch(e => console.error('Error scores:', e));
+  // Update DOM before Firestore call (onSnapshot can fire synchronously inside update())
   document.getElementById(`cnt-${actionId}`).textContent = newVal;
   document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
+  const dirtyKey = playerId + ':' + matchId;
+  dirtyScores.add(dirtyKey);
+  const scoreKey = 'scores.' + playerId + '.' + matchId + '.' + actionId;
+  DB_DOC.update({ [scoreKey]: newVal })
+    .then(() => dirtyScores.delete(dirtyKey))
+    .catch(e => { console.error('Error scores:', e); dirtyScores.delete(dirtyKey); });
 }
 
 function toggleNoJugo(playerId, matchId) {
@@ -2541,13 +2562,15 @@ function toggleNoJugo(playerId, matchId) {
   if (!state.scores[playerId][matchId]) state.scores[playerId][matchId] = {};
   const cur = state.scores[playerId][matchId].nojugo || false;
   state.scores[playerId][matchId].nojugo = !cur;
-  // If marking as "no jugó", clear all other scores
   if (!cur) {
     state.scores[playerId][matchId] = { nojugo: true };
   }
+  const dirtyKey = playerId + ':' + matchId;
+  dirtyScores.add(dirtyKey);
   const nojugoKey = 'scores.' + playerId + '.' + matchId;
-  DB_DOC.update({ [nojugoKey]: state.scores[playerId][matchId] }).catch(e => console.error('Error nojugo:', e));
-  // Re-open modal to refresh
+  DB_DOC.update({ [nojugoKey]: state.scores[playerId][matchId] })
+    .then(() => dirtyScores.delete(dirtyKey))
+    .catch(e => { console.error('Error nojugo:', e); dirtyScores.delete(dirtyKey); });
   openScoringModal(playerId, matchId);
 }
 
@@ -2555,9 +2578,7 @@ function setClarinScore(playerId, matchId, val) {
   if (!state.scores[playerId]) state.scores[playerId] = {};
   if (!state.scores[playerId][matchId]) state.scores[playerId][matchId] = {};
   state.scores[playerId][matchId].clarin = val;
-  const clarinKey = 'scores.' + playerId + '.' + matchId + '.clarin';
-  DB_DOC.update({ [clarinKey]: val }).catch(e => console.error('Error clarin:', e));
-  // Update button styles
+  // Update DOM before Firestore call
   for (let n = 1; n <= 10; n++) {
     const btn = document.getElementById('clarin-btn-' + n);
     if (!btn) continue;
@@ -2567,6 +2588,12 @@ function setClarinScore(playerId, matchId, val) {
     btn.style.color = active ? '#000' : 'var(--text)';
   }
   document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
+  const dirtyKey = playerId + ':' + matchId;
+  dirtyScores.add(dirtyKey);
+  const clarinKey = 'scores.' + playerId + '.' + matchId + '.clarin';
+  DB_DOC.update({ [clarinKey]: val })
+    .then(() => dirtyScores.delete(dirtyKey))
+    .catch(e => { console.error('Error clarin:', e); dirtyScores.delete(dirtyKey); });
 }
 
 function renderVeedorHistorial() {
