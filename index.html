@@ -646,25 +646,8 @@ async function initApp() {
       state.players        = d.players    || [];
       state.teams          = d.teams      || [];
       state.matches        = d.matches    || [];
-      // Merge scores: preserve modal edits and recently saved scores not yet confirmed
-      {
-        const remoteScores = d.scores || {};
-        const merged = JSON.parse(JSON.stringify(remoteScores));
-        // Modal abierto: proteger cambios locales no guardados
-        if (localModalScores !== null && localModalPlayerId && localModalMatchId) {
-          if (!merged[localModalPlayerId]) merged[localModalPlayerId] = {};
-          merged[localModalPlayerId][localModalMatchId] = { ...localModalScores };
-        }
-        // Post-guardado: proteger scores hasta que Firebase confirme la escritura
-        for (const [key, scores] of pendingSavedScores) {
-          const sep = key.indexOf(':');
-          const pid = key.slice(0, sep);
-          const mid = key.slice(sep + 1);
-          if (!merged[pid]) merged[pid] = {};
-          merged[pid][mid] = { ...scores };
-        }
-        state.scores = merged;
-      }
+      // scores NUNCA se actualiza desde onSnapshot — se carga en initApp y
+      // solo lo modifica saveAndCloseScoring(). Ningún snapshot puede revertir un puntaje guardado.
       state.dts            = d.dts        || [];
       const prevActiva = state.activeFecha;
       state.activeFecha    = d.activeFecha|| null;
@@ -2571,16 +2554,8 @@ function saveAndCloseScoring() {
   state.scores[pid][mid] = scores;
   pendingSavedScores.set(protKey, scores);
 
-  // Escribir campo por campo (mismo enfoque que funcionaba antes), todo en un único update() atómico
-  const updates = {};
-  const prefix = 'scores.' + pid + '.' + mid + '.';
-  updates[prefix + 'clarin'] = scores.clarin || 0;
-  updates[prefix + 'nojugo'] = scores.nojugo || false;
-  for (const a of ACTIONS) {
-    updates[prefix + a.id] = scores[a.id] || 0;
-  }
-
-  DB_DOC.update(updates)
+  const key = 'scores.' + pid + '.' + mid;
+  DB_DOC.update({ [key]: scores })
     .then(() => {
       pendingSavedScores.delete(protKey);
       showToast('Puntaje guardado ✓', 'green');
