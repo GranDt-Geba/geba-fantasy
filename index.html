@@ -638,7 +638,9 @@ async function initApp() {
       state.players        = d.players    || [];
       state.teams          = d.teams      || [];
       state.matches        = d.matches    || [];
-      state.scores         = d.scores     || {};
+      // scores NUNCA se actualiza desde onSnapshot — se carga en initApp y
+      // solo lo modifica saveAndCloseScoring(). Así ningún snapshot puede pisar
+      // un puntaje recién guardado.
       state.dts            = d.dts        || [];
       const prevActiva = state.activeFecha;
       state.activeFecha    = d.activeFecha|| null;
