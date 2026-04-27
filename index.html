@@ -559,7 +559,9 @@ function save() {
       dtTransfersFecha: state.dtTransfersFecha || {},
       dtRosterHistory: state.dtRosterHistory || {},
     }, { merge: true })
-    // dtPagos se guarda SOLO con update() directo, nunca desde save().then(() => { isSaving = false; }).catch(e => { console.error('Error guardando:', e); isSaving = false; });
+    // dtPagos se guarda SOLO con update() directo, nunca desde save()
+    .then(() => { isSaving = false; })
+    .catch(e => { console.error('Error guardando:', e); isSaving = false; });
   }, 400);
 }
 
@@ -2528,10 +2530,8 @@ function changeAction(playerId, matchId, actionId, delta) {
   const cur = state.scores[playerId][matchId][actionId] || 0;
   const newVal = Math.max(0, cur + delta);
   state.scores[playerId][matchId][actionId] = newVal;
-  // Guardar solo este campo específico sin debounce
   const scoreKey = 'scores.' + playerId + '.' + matchId + '.' + actionId;
   DB_DOC.update({ [scoreKey]: newVal }).catch(e => console.error('Error scores:', e));
-  save();
   document.getElementById(`cnt-${actionId}`).textContent = newVal;
   document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
 }
@@ -2547,7 +2547,6 @@ function toggleNoJugo(playerId, matchId) {
   }
   const nojugoKey = 'scores.' + playerId + '.' + matchId;
   DB_DOC.update({ [nojugoKey]: state.scores[playerId][matchId] }).catch(e => console.error('Error nojugo:', e));
-  save();
   // Re-open modal to refresh
   openScoringModal(playerId, matchId);
 }
@@ -2558,7 +2557,6 @@ function setClarinScore(playerId, matchId, val) {
   state.scores[playerId][matchId].clarin = val;
   const clarinKey = 'scores.' + playerId + '.' + matchId + '.clarin';
   DB_DOC.update({ [clarinKey]: val }).catch(e => console.error('Error clarin:', e));
-  save();
   // Update button styles
   for (let n = 1; n <= 10; n++) {
     const btn = document.getElementById('clarin-btn-' + n);
