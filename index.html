@@ -537,7 +537,11 @@ let state = {
 let saveTimeout = null;
 let saveSubsTimeout = null;
 let isSaving = false;
-const dirtyScores = new Set(); // 'playerId:matchId' — protege cambios locales pendientes de onSnapshot
+// Contador de writes pendientes por 'playerId:matchId'. Mientras > 0, onSnapshot no pisa state.scores
+const dirtyScoreCounts = new Map();
+function markScoreDirty(key) { dirtyScoreCounts.set(key, (dirtyScoreCounts.get(key) || 0) + 1); }
+function unmarkScoreDirty(key) { const n = (dirtyScoreCounts.get(key) || 1) - 1; n <= 0 ? dirtyScoreCounts.delete(key) : dirtyScoreCounts.set(key, n); }
+function isScoreDirty(key) { return (dirtyScoreCounts.get(key) || 0) > 0; }
 
 function save() {
   clearTimeout(saveTimeout);
@@ -641,12 +645,12 @@ async function initApp() {
       state.players        = d.players    || [];
       state.teams          = d.teams      || [];
       state.matches        = d.matches    || [];
-      // Merge scores: preserve dirty entries (local pending writes) so onSnapshot
-      // doesn't overwrite changes not yet confirmed by the server
+      // Merge scores: preserve entries with pending local writes (count > 0)
       {
         const remoteScores = d.scores || {};
         const merged = JSON.parse(JSON.stringify(remoteScores));
-        for (const key of dirtyScores) {
+        for (const [key] of dirtyScoreCounts) {
+          if (!isScoreDirty(key)) continue;
           const sep = key.indexOf(':');
           const pid = key.slice(0, sep);
           const mid = key.slice(sep + 1);
@@ -2550,11 +2554,11 @@ function changeAction(playerId, matchId, actionId, delta) {
   document.getElementById(`cnt-${actionId}`).textContent = newVal;
   document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
   const dirtyKey = playerId + ':' + matchId;
-  dirtyScores.add(dirtyKey);
+  markScoreDirty(dirtyKey);
   const scoreKey = 'scores.' + playerId + '.' + matchId + '.' + actionId;
   DB_DOC.update({ [scoreKey]: newVal })
-    .then(() => dirtyScores.delete(dirtyKey))
-    .catch(e => { console.error('Error scores:', e); dirtyScores.delete(dirtyKey); });
+    .then(() => unmarkScoreDirty(dirtyKey))
+    .catch(e => { console.error('Error scores:', e); unmarkScoreDirty(dirtyKey); });
 }
 
 function toggleNoJugo(playerId, matchId) {
@@ -2566,11 +2570,11 @@ function toggleNoJugo(playerId, matchId) {
     state.scores[playerId][matchId] = { nojugo: true };
   }
   const dirtyKey = playerId + ':' + matchId;
-  dirtyScores.add(dirtyKey);
+  markScoreDirty(dirtyKey);
   const nojugoKey = 'scores.' + playerId + '.' + matchId;
   DB_DOC.update({ [nojugoKey]: state.scores[playerId][matchId] })
-    .then(() => dirtyScores.delete(dirtyKey))
-    .catch(e => { console.error('Error nojugo:', e); dirtyScores.delete(dirtyKey); });
+    .then(() => unmarkScoreDirty(dirtyKey))
+    .catch(e => { console.error('Error nojugo:', e); unmarkScoreDirty(dirtyKey); });
   openScoringModal(playerId, matchId);
 }
 
@@ -2589,11 +2593,11 @@ function setClarinScore(playerId, matchId, val) {
   }
   document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
   const dirtyKey = playerId + ':' + matchId;
-  dirtyScores.add(dirtyKey);
+  markScoreDirty(dirtyKey);
   const clarinKey = 'scores.' + playerId + '.' + matchId + '.clarin';
   DB_DOC.update({ [clarinKey]: val })
-    .then(() => dirtyScores.delete(dirtyKey))
-    .catch(e => { console.error('Error clarin:', e); dirtyScores.delete(dirtyKey); });
+    .then(() => unmarkScoreDirty(dirtyKey))
+    .catch(e => { console.error('Error clarin:', e); unmarkScoreDirty(dirtyKey); });
 }
 
 function renderVeedorHistorial() {
