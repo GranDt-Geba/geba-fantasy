@@ -2428,9 +2428,9 @@ function saveAndCloseScoring() {
   state.scores[pid][mid] = scores;
   pendingSavedScores.set(protKey, scores);
 
-  // Escribir el objeto completo en el path del partido — funciona con IDs numéricos
-  const key = 'scores.' + pid + '.' + mid;
-  DB_DOC.update({ [key]: scores })
+  // FieldPath evita que el SDK valide los IDs numéricos como identificadores
+  const scorePath = new firebase.firestore.FieldPath('scores', pid, mid);
+  DB_DOC.update(scorePath, scores)
     .then(() => {
       pendingSavedScores.delete(protKey);
       showToast('Puntaje guardado ✓', 'green');
