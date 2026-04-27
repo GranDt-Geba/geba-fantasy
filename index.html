@@ -2428,9 +2428,8 @@ function saveAndCloseScoring() {
   state.scores[pid][mid] = scores;
   pendingSavedScores.set(protKey, scores);
 
-  // FieldPath evita que el SDK valide los IDs numéricos como identificadores
-  const scorePath = new firebase.firestore.FieldPath('scores', pid, mid);
-  DB_DOC.update(scorePath, scores)
+  // set() con merge evita toda la complejidad de dot-notation con IDs numéricos
+  DB_DOC.set({ scores: state.scores }, { merge: true })
     .then(() => {
       pendingSavedScores.delete(protKey);
       showToast('Puntaje guardado ✓', 'green');
