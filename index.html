@@ -2428,16 +2428,9 @@ function saveAndCloseScoring() {
   state.scores[pid][mid] = scores;
   pendingSavedScores.set(protKey, scores);
 
-  // Escribir campo por campo (mismo enfoque que funcionaba antes), todo en un único update() atómico
-  const updates = {};
-  const prefix = 'scores.' + pid + '.' + mid + '.';
-  updates[prefix + 'clarin'] = scores.clarin || 0;
-  updates[prefix + 'nojugo'] = scores.nojugo || false;
-  for (const a of ACTIONS) {
-    updates[prefix + a.id] = scores[a.id] || 0;
-  }
-
-  DB_DOC.update(updates)
+  // Escribir el objeto completo en el path del partido — funciona con IDs numéricos
+  const key = 'scores.' + pid + '.' + mid;
+  DB_DOC.update({ [key]: scores })
     .then(() => {
       pendingSavedScores.delete(protKey);
       showToast('Puntaje guardado ✓', 'green');
