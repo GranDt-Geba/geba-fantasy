@@ -2444,13 +2444,9 @@ function saveAndCloseScoring() {
     })
     .catch(e => {
       console.error('Error guardando puntaje:', e);
-      // Mantener pendingSavedScores para que el onSnapshot no pise el estado local
-      showToast('Error al guardar — reintentando...', 'red');
-      setTimeout(() => {
-        DB_DOC.update(updates)
-          .then(() => { pendingSavedScores.delete(protKey); showToast('Puntaje guardado ✓', 'green'); })
-          .catch(e2 => { console.error('Error guardando (retry):', e2); pendingSavedScores.delete(protKey); showToast('Error: no se pudo guardar', 'red'); });
-      }, 2000);
+      pendingSavedScores.delete(protKey);
+      const msg = (e && (e.message || e.code)) ? (e.code || e.message) : String(e);
+      showToast('ERROR: ' + msg, 'red');
     });
 
   localModalScores = null;
