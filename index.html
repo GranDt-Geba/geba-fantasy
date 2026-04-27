@@ -538,9 +538,11 @@ let saveTimeout = null;
 let saveSubsTimeout = null;
 let isSaving = false;
 // Scores locales del modal activo — solo se persisten al guardar
-let localModalScores = null; // { clarin, amarilla, gol_del, ... } o null si modal cerrado
+let localModalScores = null;
 let localModalPlayerId = null;
 let localModalMatchId = null;
+// Protección post-guardado: onSnapshot no puede pisar estos scores hasta que Firebase confirme
+const pendingSavedScores = new Map(); // 'pid:mid' → scores object
 
 function save() {
   clearTimeout(saveTimeout);
@@ -644,13 +646,22 @@ async function initApp() {
       state.players        = d.players    || [];
       state.teams          = d.teams      || [];
       state.matches        = d.matches    || [];
-      // Merge scores: preserve active modal edits (not yet saved to Firebase)
+      // Merge scores: preserve modal edits and recently saved scores not yet confirmed
       {
         const remoteScores = d.scores || {};
         const merged = JSON.parse(JSON.stringify(remoteScores));
+        // Modal abierto: proteger cambios locales no guardados
         if (localModalScores !== null && localModalPlayerId && localModalMatchId) {
           if (!merged[localModalPlayerId]) merged[localModalPlayerId] = {};
           merged[localModalPlayerId][localModalMatchId] = { ...localModalScores };
+        }
+        // Post-guardado: proteger scores hasta que Firebase confirme la escritura
+        for (const [key, scores] of pendingSavedScores) {
+          const sep = key.indexOf(':');
+          const pid = key.slice(0, sep);
+          const mid = key.slice(sep + 1);
+          if (!merged[pid]) merged[pid] = {};
+          merged[pid][mid] = { ...scores };
         }
         state.scores = merged;
       }
@@ -2555,11 +2566,17 @@ function saveAndCloseScoring() {
   const pid = localModalPlayerId;
   const mid = localModalMatchId;
   const scores = { ...localModalScores };
-  // Escribir a state y Firebase de una sola vez
+  const protKey = pid + ':' + mid;
+  // Escribir a state local
   if (!state.scores[pid]) state.scores[pid] = {};
   state.scores[pid][mid] = scores;
+  // Proteger contra onSnapshot hasta que Firebase confirme
+  pendingSavedScores.set(protKey, scores);
+  // Escribir a Firebase — una sola operación atómica para el partido completo
   const key = 'scores.' + pid + '.' + mid;
-  DB_DOC.update({ [key]: scores }).catch(e => console.error('Error guardando puntaje:', e));
+  DB_DOC.update({ [key]: scores })
+    .then(() => pendingSavedScores.delete(protKey))
+    .catch(e => { console.error('Error guardando puntaje:', e); pendingSavedScores.delete(protKey); });
   // Limpiar estado del modal
   localModalScores = null;
   localModalPlayerId = null;
