@@ -555,14 +555,15 @@ function save() {
       dtTeams:        state.dtTeams,
       dtCaptains:     state.dtCaptains,
       dtFechaCompletado: state.dtFechaCompletado || {},
-      ...(state.activeFecha != null ? { activeFecha: state.activeFecha } : {}),
+      activeFecha:    state.activeFecha ?? null,
       mercadoAbierto: state.mercadoAbierto !== false,
       mercadoCierre:  state.mercadoCierre || null,
       analisisFecha:  state.analisisFecha || '',
       transfers:      state.transfers || [],
       dtTransfersFecha: state.dtTransfersFecha || {},
       dtRosterHistory: state.dtRosterHistory || {},
-    }, { merge: true })
+      dtPagos:        state.dtPagos || {},
+    })
     .then(() => { isSaving = false; })
     .catch(e => { console.error('Error guardando:', e); isSaving = false; });
   }, 400);
