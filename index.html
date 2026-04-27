@@ -2548,27 +2548,13 @@ function saveAndCloseScoring() {
   if (localModalScores === null) { closeModal(); renderVeedorPuntuar(); return; }
   const pid = localModalPlayerId;
   const mid = localModalMatchId;
-  const scores = { ...localModalScores };
-  const protKey = pid + ':' + mid;
   if (!state.scores[pid]) state.scores[pid] = {};
-  state.scores[pid][mid] = scores;
-  pendingSavedScores.set(protKey, scores);
-
-  DB_DOC.set({ scores: state.scores }, { merge: true })
-    .then(() => {
-      pendingSavedScores.delete(protKey);
-      showToast('Puntaje guardado ✓', 'green');
-    })
-    .catch(e => {
-      console.error('Error guardando puntaje:', e);
-      pendingSavedScores.delete(protKey);
-      const msg = (e && (e.message || e.code)) ? (e.code || e.message) : String(e);
-      showToast('ERROR: ' + msg, 'red');
-    });
-
+  state.scores[pid][mid] = { ...localModalScores };
   localModalScores = null;
   localModalPlayerId = null;
   localModalMatchId = null;
+  clearTimeout(saveTimeout);
+  save();
   closeModal();
   renderVeedorPuntuar();
 }
