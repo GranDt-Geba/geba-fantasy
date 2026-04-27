@@ -550,7 +550,7 @@ function save() {
       players:        state.players,
       teams:          state.teams,
       matches:        state.matches,
-      // scores nunca se escribe desde save() — solo via saveAndCloseScoring()
+      scores:         state.scores,
       dts:            state.dts,
       dtTeams:        state.dtTeams,
       dtCaptains:     state.dtCaptains,
@@ -2422,28 +2422,14 @@ function saveAndCloseScoring() {
   if (localModalScores === null) { closeModal(); renderVeedorPuntuar(); return; }
   const pid = localModalPlayerId;
   const mid = localModalMatchId;
-  const scores = { ...localModalScores };
-  const protKey = pid + ':' + mid;
   if (!state.scores[pid]) state.scores[pid] = {};
-  state.scores[pid][mid] = scores;
-  pendingSavedScores.set(protKey, scores);
-
-  // set() con merge evita toda la complejidad de dot-notation con IDs numéricos
-  DB_DOC.set({ scores: state.scores }, { merge: true })
-    .then(() => {
-      pendingSavedScores.delete(protKey);
-      showToast('Puntaje guardado ✓', 'green');
-    })
-    .catch(e => {
-      console.error('Error guardando puntaje:', e);
-      pendingSavedScores.delete(protKey);
-      const msg = (e && (e.message || e.code)) ? (e.code || e.message) : String(e);
-      showToast('ERROR: ' + msg, 'red');
-    });
-
+  state.scores[pid][mid] = { ...localModalScores };
   localModalScores = null;
   localModalPlayerId = null;
   localModalMatchId = null;
+  // save() ya funciona para todos los demás campos — ahora incluye scores también
+  clearTimeout(saveTimeout);
+  save();
   closeModal();
   renderVeedorPuntuar();
 }
