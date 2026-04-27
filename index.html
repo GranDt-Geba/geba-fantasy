@@ -2567,22 +2567,55 @@ function saveAndCloseScoring() {
   const mid = localModalMatchId;
   const scores = { ...localModalScores };
   const protKey = pid + ':' + mid;
-  // Escribir a state local
   if (!state.scores[pid]) state.scores[pid] = {};
   state.scores[pid][mid] = scores;
-  // Proteger contra onSnapshot hasta que Firebase confirme
   pendingSavedScores.set(protKey, scores);
-  // Escribir a Firebase — una sola operación atómica para el partido completo
-  const key = 'scores.' + pid + '.' + mid;
-  DB_DOC.update({ [key]: scores })
-    .then(() => pendingSavedScores.delete(protKey))
-    .catch(e => { console.error('Error guardando puntaje:', e); pendingSavedScores.delete(protKey); });
-  // Limpiar estado del modal
+
+  // Escribir campo por campo (mismo enfoque que funcionaba antes), todo en un único update() atómico
+  const updates = {};
+  const prefix = 'scores.' + pid + '.' + mid + '.';
+  updates[prefix + 'clarin'] = scores.clarin || 0;
+  updates[prefix + 'nojugo'] = scores.nojugo || false;
+  for (const a of ACTIONS) {
+    updates[prefix + a.id] = scores[a.id] || 0;
+  }
+
+  DB_DOC.update(updates)
+    .then(() => {
+      pendingSavedScores.delete(protKey);
+      showToast('Puntaje guardado ✓', 'green');
+    })
+    .catch(e => {
+      console.error('Error guardando puntaje:', e);
+      showToast('Error al guardar — reintentando...', 'red');
+      setTimeout(() => {
+        DB_DOC.update(updates)
+          .then(() => { pendingSavedScores.delete(protKey); showToast('Puntaje guardado ✓', 'green'); })
+          .catch(e2 => { console.error('Error guardando (retry):', e2); pendingSavedScores.delete(protKey); showToast('Error: no se pudo guardar', 'red'); });
+      }, 2000);
+    });
+
   localModalScores = null;
   localModalPlayerId = null;
   localModalMatchId = null;
   closeModal();
   renderVeedorPuntuar();
+}
+
+function showToast(msg, color) {
+  let t = document.getElementById('score-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'score-toast';
+    t.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);padding:0.6rem 1.4rem;border-radius:8px;font-weight:700;font-size:0.9rem;z-index:99999;transition:opacity 0.4s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.background = color === 'green' ? '#00C853' : '#FF1744';
+  t.style.color = color === 'green' ? '#000' : '#fff';
+  t.style.opacity = '1';
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(() => { t.style.opacity = '0'; }, 2500);
 }
 
 function changeAction(playerId, matchId, actionId, delta) {
