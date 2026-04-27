@@ -537,11 +537,10 @@ let state = {
 let saveTimeout = null;
 let saveSubsTimeout = null;
 let isSaving = false;
-// Contador de writes pendientes por 'playerId:matchId'. Mientras > 0, onSnapshot no pisa state.scores
-const dirtyScoreCounts = new Map();
-function markScoreDirty(key) { dirtyScoreCounts.set(key, (dirtyScoreCounts.get(key) || 0) + 1); }
-function unmarkScoreDirty(key) { const n = (dirtyScoreCounts.get(key) || 1) - 1; n <= 0 ? dirtyScoreCounts.delete(key) : dirtyScoreCounts.set(key, n); }
-function isScoreDirty(key) { return (dirtyScoreCounts.get(key) || 0) > 0; }
+// Scores locales del modal activo — solo se persisten al guardar
+let localModalScores = null; // { clarin, amarilla, gol_del, ... } o null si modal cerrado
+let localModalPlayerId = null;
+let localModalMatchId = null;
 
 function save() {
   clearTimeout(saveTimeout);
@@ -645,19 +644,13 @@ async function initApp() {
       state.players        = d.players    || [];
       state.teams          = d.teams      || [];
       state.matches        = d.matches    || [];
-      // Merge scores: preserve entries with pending local writes (count > 0)
+      // Merge scores: preserve active modal edits (not yet saved to Firebase)
       {
         const remoteScores = d.scores || {};
         const merged = JSON.parse(JSON.stringify(remoteScores));
-        for (const [key] of dirtyScoreCounts) {
-          if (!isScoreDirty(key)) continue;
-          const sep = key.indexOf(':');
-          const pid = key.slice(0, sep);
-          const mid = key.slice(sep + 1);
-          if (state.scores[pid] && state.scores[pid][mid]) {
-            if (!merged[pid]) merged[pid] = {};
-            merged[pid][mid] = state.scores[pid][mid];
-          }
+        if (localModalScores !== null && localModalPlayerId && localModalMatchId) {
+          if (!merged[localModalPlayerId]) merged[localModalPlayerId] = {};
+          merged[localModalPlayerId][localModalMatchId] = { ...localModalScores };
         }
         state.scores = merged;
       }
@@ -2478,11 +2471,22 @@ function calcPlayerPtsInMatch(playerId, matchId) {
 function openScoringModal(playerId, matchId) {
   const player = state.players.find(p => p.id === playerId);
   const match = state.matches.find(m => m.id === matchId);
-  const currentActions = ((state.scores[playerId] || {})[matchId]) || {};
+  // Cargar en memoria local — no se escribe a Firebase hasta "Guardar"
+  localModalPlayerId = playerId;
+  localModalMatchId = matchId;
+  localModalScores = { ...((state.scores[playerId] || {})[matchId] || {}) };
 
-  const clarinVal = currentActions.clarin || 0;
-  const html = `
-    <div class="modal-overlay" onclick="closeModal();renderVeedorPuntuar()">
+  function calcLocalTotal() {
+    let t = localModalScores.clarin || 0;
+    for (const a of ACTIONS) t += (a.pts) * (localModalScores[a.id] || 0);
+    return t;
+  }
+
+  function render() {
+    const s = localModalScores;
+    const clarinVal = s.clarin || 0;
+    const html = `
+    <div class="modal-overlay" onclick="saveAndCloseScoring()">
       <div class="modal" onclick="event.stopPropagation()">
         <div class="modal-title">⚽ ${player.name}</div>
         <div style="font-size:0.82rem;color:var(--muted);margin-bottom:1rem">${match.desc} · <span class="badge ${getBadgeClass(player.pos)}">${player.pos}</span></div>
@@ -2490,10 +2494,10 @@ function openScoringModal(playerId, matchId) {
         <!-- No jugó -->
         <div style="margin-bottom:1rem">
           <button id="btn-nojugo" onclick="toggleNoJugo('${playerId}','${matchId}')"
-            style="width:100%;padding:0.6rem;border-radius:8px;border:2px solid ${currentActions.nojugo?'#FF1744':'var(--green-dim)'};background:${currentActions.nojugo?'#FF174422':'transparent'};color:${currentActions.nojugo?'#FF1744':'var(--muted)'};font-weight:700;font-size:0.95rem;cursor:pointer;letter-spacing:0.05em">
-            ${currentActions.nojugo ? '❌ NO JUGÓ (activo)' : '⬜ Marcar como NO JUGÓ'}
+            style="width:100%;padding:0.6rem;border-radius:8px;border:2px solid ${s.nojugo?'#FF1744':'var(--green-dim)'};background:${s.nojugo?'#FF174422':'transparent'};color:${s.nojugo?'#FF1744':'var(--muted)'};font-weight:700;font-size:0.95rem;cursor:pointer;letter-spacing:0.05em">
+            ${s.nojugo ? '❌ NO JUGÓ (activo)' : '⬜ Marcar como NO JUGÓ'}
           </button>
-          ${currentActions.nojugo ? '<div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem;text-align:center">El suplente de su posición entrará automáticamente para el DT que lo tenga.</div>' : ''}
+          ${s.nojugo ? '<div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem;text-align:center">El suplente de su posición entrará automáticamente para el DT que lo tenga.</div>' : ''}
         </div>
 
         <!-- Calificación Clarín -->
@@ -2519,7 +2523,7 @@ function openScoringModal(playerId, matchId) {
         <div style="font-size:0.72rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem">Acciones del partido</div>
         <div class="scoring-grid" id="scoring-grid">
           ${ACTIONS.map(a => {
-            const count = currentActions[a.id] || 0;
+            const count = s[a.id] || 0;
             return `<div class="score-action" id="sa-${a.id}">
               <div class="action-icon">${a.icon}</div>
               <div class="action-label">${a.label}</div>
@@ -2535,69 +2539,69 @@ function openScoringModal(playerId, matchId) {
         <hr class="divider">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-family:'Barlow Condensed',sans-serif;font-size:1.4rem;">
-            Total: <span id="modal-total" style="color:var(--gold)">${calcPlayerMatchPts(playerId,matchId)}</span> pts
+            Total: <span id="modal-total" style="color:var(--gold)">${calcLocalTotal()}</span> pts
           </div>
-          <button class="btn btn-primary" onclick="closeModal();renderVeedorPuntuar()">Guardar ✓</button>
+          <button class="btn btn-primary" onclick="saveAndCloseScoring()">Guardar ✓</button>
         </div>
       </div>
     </div>`;
-  document.getElementById('modal-container').innerHTML = html;
+    document.getElementById('modal-container').innerHTML = html;
+  }
+  render();
+}
+
+function saveAndCloseScoring() {
+  if (localModalScores === null) { closeModal(); renderVeedorPuntuar(); return; }
+  const pid = localModalPlayerId;
+  const mid = localModalMatchId;
+  const scores = { ...localModalScores };
+  // Escribir a state y Firebase de una sola vez
+  if (!state.scores[pid]) state.scores[pid] = {};
+  state.scores[pid][mid] = scores;
+  const key = 'scores.' + pid + '.' + mid;
+  DB_DOC.update({ [key]: scores }).catch(e => console.error('Error guardando puntaje:', e));
+  // Limpiar estado del modal
+  localModalScores = null;
+  localModalPlayerId = null;
+  localModalMatchId = null;
+  closeModal();
+  renderVeedorPuntuar();
 }
 
 function changeAction(playerId, matchId, actionId, delta) {
-  if (!state.scores[playerId]) state.scores[playerId] = {};
-  if (!state.scores[playerId][matchId]) state.scores[playerId][matchId] = {};
-  const cur = state.scores[playerId][matchId][actionId] || 0;
+  if (localModalScores === null) return;
+  const cur = localModalScores[actionId] || 0;
   const newVal = Math.max(0, cur + delta);
-  state.scores[playerId][matchId][actionId] = newVal;
-  // Update DOM before Firestore call (onSnapshot can fire synchronously inside update())
+  localModalScores[actionId] = newVal;
+  // Calcular total desde memoria local
+  let total = localModalScores.clarin || 0;
+  for (const a of ACTIONS) total += a.pts * (localModalScores[a.id] || 0);
   document.getElementById(`cnt-${actionId}`).textContent = newVal;
-  document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
-  const dirtyKey = playerId + ':' + matchId;
-  markScoreDirty(dirtyKey);
-  const scoreKey = 'scores.' + playerId + '.' + matchId + '.' + actionId;
-  DB_DOC.update({ [scoreKey]: newVal })
-    .then(() => unmarkScoreDirty(dirtyKey))
-    .catch(e => { console.error('Error scores:', e); unmarkScoreDirty(dirtyKey); });
+  document.getElementById('modal-total').textContent = total;
 }
 
 function toggleNoJugo(playerId, matchId) {
-  if (!state.scores[playerId]) state.scores[playerId] = {};
-  if (!state.scores[playerId][matchId]) state.scores[playerId][matchId] = {};
-  const cur = state.scores[playerId][matchId].nojugo || false;
-  state.scores[playerId][matchId].nojugo = !cur;
-  if (!cur) {
-    state.scores[playerId][matchId] = { nojugo: true };
-  }
-  const dirtyKey = playerId + ':' + matchId;
-  markScoreDirty(dirtyKey);
-  const nojugoKey = 'scores.' + playerId + '.' + matchId;
-  DB_DOC.update({ [nojugoKey]: state.scores[playerId][matchId] })
-    .then(() => unmarkScoreDirty(dirtyKey))
-    .catch(e => { console.error('Error nojugo:', e); unmarkScoreDirty(dirtyKey); });
+  if (localModalScores === null) return;
+  const cur = localModalScores.nojugo || false;
+  localModalScores = cur ? {} : { nojugo: true };
   openScoringModal(playerId, matchId);
 }
 
 function setClarinScore(playerId, matchId, val) {
-  if (!state.scores[playerId]) state.scores[playerId] = {};
-  if (!state.scores[playerId][matchId]) state.scores[playerId][matchId] = {};
-  state.scores[playerId][matchId].clarin = val;
-  // Update DOM before Firestore call
+  if (localModalScores === null) return;
+  localModalScores.clarin = val;
+  // Actualizar botones
   for (let n = 1; n <= 10; n++) {
     const btn = document.getElementById('clarin-btn-' + n);
     if (!btn) continue;
-    const active = n === val;
-    btn.style.borderColor = active ? 'var(--green)' : 'var(--green-dim)';
-    btn.style.background = active ? 'var(--green)' : 'transparent';
-    btn.style.color = active ? '#000' : 'var(--text)';
+    btn.style.borderColor = n === val ? 'var(--green)' : 'var(--green-dim)';
+    btn.style.background  = n === val ? 'var(--green)' : 'transparent';
+    btn.style.color       = n === val ? '#000' : 'var(--text)';
   }
-  document.getElementById('modal-total').textContent = calcPlayerMatchPts(playerId, matchId);
-  const dirtyKey = playerId + ':' + matchId;
-  markScoreDirty(dirtyKey);
-  const clarinKey = 'scores.' + playerId + '.' + matchId + '.clarin';
-  DB_DOC.update({ [clarinKey]: val })
-    .then(() => unmarkScoreDirty(dirtyKey))
-    .catch(e => { console.error('Error clarin:', e); unmarkScoreDirty(dirtyKey); });
+  // Recalcular total
+  let total = val || 0;
+  for (const a of ACTIONS) total += a.pts * (localModalScores[a.id] || 0);
+  document.getElementById('modal-total').textContent = total;
 }
 
 function renderVeedorHistorial() {
