@@ -546,7 +546,6 @@ function save() {
       players:        state.players,
       teams:          state.teams,
       matches:        state.matches,
-      scores:         state.scores,
       dts:            state.dts,
       dtTeams:        state.dtTeams,
       dtCaptains:     state.dtCaptains,
@@ -559,6 +558,7 @@ function save() {
       dtTransfersFecha: state.dtTransfersFecha || {},
       dtRosterHistory: state.dtRosterHistory || {},
     }, { merge: true })
+    // scores se guarda SOLO con DB_DOC.update() por campo, nunca desde save()
     // dtPagos se guarda SOLO con update() directo, nunca desde save()
     .then(() => { isSaving = false; })
     .catch(e => { console.error('Error guardando:', e); isSaving = false; });
