@@ -669,8 +669,10 @@ async function initApp() {
         for (const dtId in remotePagos[fecha]) {
           const remoto = remotePagos[fecha][dtId];
           const local = state.dtPagos[fecha][dtId];
-          // Si local ya tiene aviso enviado o está habilitado, no pisarlo
-          if (local && (local.msg || local.habilitado)) continue;
+          // Si el admin denegó (remoto tiene denegado:true), siempre aplicarlo
+          if (remoto && remoto.denegado) { state.dtPagos[fecha][dtId] = remoto; continue; }
+          // Si local ya tiene aviso, está habilitado, o fue denegado, no pisarlo
+          if (local && (local.msg || local.habilitado || local.denegado)) continue;
           state.dtPagos[fecha][dtId] = remoto;
         }
       }
@@ -1963,6 +1965,10 @@ function renderAdminMercado() {
       ${!state.activeFecha ? '<div style="color:var(--muted);font-size:0.85rem">No hay fecha activa.</div>' : (() => {
         const pagosF = (state.dtPagos || {})[state.activeFecha] || {};
         const avisaron = Object.entries(pagosF);
+        const pendientes = avisaron.filter(([,p]) => !p.habilitado && !p.denegado);
+        const denegarTodosBtn = pendientes.length > 0
+          ? `<button class="btn btn-secondary btn-sm" style="color:#FF4444;border-color:#FF444466;margin-bottom:0.6rem" onclick="denegarTodosDtPago()">✕ Denegar todos los pendientes (${pendientes.length})</button>`
+          : '';
         // DTs que no avisaron pero pueden habilitarse manualmente
         const noAvisaron = state.dts.filter(d => !pagosF[d.id]);
         const habilitarManualHtml = noAvisaron.length > 0 ? `
@@ -1972,8 +1978,8 @@ function renderAdminMercado() {
               ${noAvisaron.map(d => `<button class="btn btn-secondary btn-sm" onclick="habilitarDtDirecto('${d.id}')">${d.name}</button>`).join('')}
             </div>
           </div>` : '';
-        if (avisaron.length === 0) return habilitarManualHtml + '<div style="text-align:center;padding:1rem;color:var(--muted);font-size:0.85rem">📭 Ningún DT avisó el pago todavía</div>';
-        return habilitarManualHtml + avisaron.map(([dtId, pago]) => {
+        if (avisaron.length === 0) return denegarTodosBtn + habilitarManualHtml + '<div style="text-align:center;padding:1rem;color:var(--muted);font-size:0.85rem">📭 Ningún DT avisó el pago todavía</div>';
+        return denegarTodosBtn + habilitarManualHtml + avisaron.map(([dtId, pago]) => {
           const dt = state.dts.find(d => d.id === dtId);
           if (!dt) return '';
           return `<div style="padding:0.75rem 0;border-bottom:1px solid var(--border)">
@@ -1984,13 +1990,14 @@ function renderAdminMercado() {
                 ${pago.msg ? `<div style="font-size:0.73rem;color:var(--muted);font-style:italic">"${pago.msg}"</div>` : ''}
                 <div style="font-size:0.68rem;color:var(--muted)">${pago.ts}</div>
               </div>
-              <div style="background:${pago.habilitado?'rgba(0,230,118,0.12)':'rgba(255,143,0,0.12)'};border:1px solid ${pago.habilitado?'rgba(0,230,118,0.4)':'rgba(255,143,0,0.4)'};border-radius:6px;padding:0.18rem 0.55rem;font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;font-weight:700;color:${pago.habilitado?'var(--green)':'#FF8F00'};white-space:nowrap">
-                ${pago.habilitado ? '✅ Habilitado' : '⏳ Aviso'}
+              <div style="background:${pago.habilitado?'rgba(0,230,118,0.12)':pago.denegado?'rgba(255,68,68,0.12)':'rgba(255,143,0,0.12)'};border:1px solid ${pago.habilitado?'rgba(0,230,118,0.4)':pago.denegado?'rgba(255,68,68,0.4)':'rgba(255,143,0,0.4)'};border-radius:6px;padding:0.18rem 0.55rem;font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;font-weight:700;color:${pago.habilitado?'var(--green)':pago.denegado?'#FF4444':'#FF8F00'};white-space:nowrap">
+                ${pago.habilitado ? '✅ Habilitado' : pago.denegado ? '❌ Denegado' : '⏳ Aviso'}
               </div>
             </div>
             <div style="display:flex;gap:0.4rem">
               ${!pago.habilitado
-                ? `<button class="btn btn-primary btn-sm" onclick="habilitarDtPago('${dtId}',true)">✓ Habilitar</button>`
+                ? `<button class="btn btn-primary btn-sm" onclick="habilitarDtPago('${dtId}',true)">✓ Habilitar</button>
+                   <button class="btn btn-secondary btn-sm" style="color:#FF4444;border-color:#FF444466" onclick="denegarDtPago('${dtId}')">✕ Denegar</button>`
                 : `<button class="btn btn-secondary btn-sm" onclick="habilitarDtPago('${dtId}',false)">✕ Deshabilitar</button>`
               }
             </div>
@@ -2178,7 +2185,34 @@ function habilitarDtPago(dtId, habilitar) {
   if (!state.dtPagos[state.activeFecha]) state.dtPagos[state.activeFecha] = {};
   if (!state.dtPagos[state.activeFecha][dtId]) return;
   state.dtPagos[state.activeFecha][dtId].habilitado = habilitar;
-  // Guardar inmediatamente sin debounce
+  DB_DOC.update({ dtPagos: state.dtPagos })
+    .catch(e => console.error('Error guardando dtPagos:', e));
+  save();
+  renderAdminMercado();
+}
+
+function denegarDtPago(dtId) {
+  if (!state.activeFecha) return;
+  if (!state.dtPagos?.[state.activeFecha]?.[dtId]) return;
+  if (!confirm('¿Denegar el aviso de pago de ' + (state.dts.find(d=>d.id===dtId)?.name||dtId) + '? El DT podrá volver a enviarlo.')) return;
+  state.dtPagos[state.activeFecha][dtId] = { denegado: true };
+  DB_DOC.update({ dtPagos: state.dtPagos })
+    .catch(e => console.error('Error guardando dtPagos:', e));
+  save();
+  renderAdminMercado();
+}
+
+function denegarTodosDtPago() {
+  if (!state.activeFecha) return;
+  const pagosF = (state.dtPagos || {})[state.activeFecha] || {};
+  const pendientes = Object.entries(pagosF).filter(([,p]) => !p.habilitado && !p.denegado);
+  if (pendientes.length === 0) return;
+  if (!confirm('¿Denegar los ' + pendientes.length + ' avisos pendientes? Los DTs podrán volver a enviarlos.')) return;
+  if (!state.dtPagos) state.dtPagos = {};
+  if (!state.dtPagos[state.activeFecha]) state.dtPagos[state.activeFecha] = {};
+  for (const [dtId] of pendientes) {
+    state.dtPagos[state.activeFecha][dtId] = { denegado: true };
+  }
   DB_DOC.update({ dtPagos: state.dtPagos })
     .catch(e => console.error('Error guardando dtPagos:', e));
   save();
