@@ -508,8 +508,9 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-const DB_DOC = db.collection('gea').doc('data');
-const DB_SUBS = db.collection('gea').doc('subs');
+const DB_DOC    = db.collection('gea').doc('data');
+const DB_SUBS   = db.collection('gea').doc('subs');
+const DB_SCORES = db.collection('gea').doc('scores');
 
 // ==================== STATE ====================
 const BUDGET = 70; // millones
@@ -552,7 +553,6 @@ function save() {
       players:        state.players,
       teams:          state.teams,
       matches:        state.matches,
-      scores:         state.scores,
       dts:            state.dts,
       dtTeams:        state.dtTeams,
       dtCaptains:     state.dtCaptains,
@@ -592,11 +592,14 @@ async function migrateFromLocalStorage(remoteData) {
   state.dtTeams    = JSON.parse(localStorage.getItem('gea_dtTeams') || '{}');
   state.dtCaptains = JSON.parse(localStorage.getItem('gea_dtCaptains') || '{}');
   state.activeFecha= localStorage.getItem('gea_activeFecha') || null;
-  await DB_DOC.set({
-    players: state.players, teams: state.teams, matches: state.matches,
-    scores: state.scores, dts: state.dts, dtTeams: state.dtTeams,
-    dtCaptains: state.dtCaptains, activeFecha: state.activeFecha || null,
-  });
+  await Promise.all([
+    DB_DOC.set({
+      players: state.players, teams: state.teams, matches: state.matches,
+      dts: state.dts, dtTeams: state.dtTeams,
+      dtCaptains: state.dtCaptains, activeFecha: state.activeFecha || null,
+    }),
+    DB_SCORES.set(state.scores),
+  ]);
   localStorage.clear();
   return true;
 }
@@ -605,17 +608,18 @@ async function initApp() {
   document.getElementById('loading-screen').style.display = 'flex';
   document.getElementById('landing').style.display = 'none';
   try {
-    const snap = await DB_DOC.get();
+    const [snap, subsSnap, scoresSnap] = await Promise.all([
+      DB_DOC.get(), DB_SUBS.get(), DB_SCORES.get()
+    ]);
     const remoteData = snap.exists ? snap.data() : null;
-    // Load dtSubs from separate document
-    const subsSnap = await DB_SUBS.get();
     state.dtSubs = subsSnap.exists ? subsSnap.data() : {};
+    // Scores live in their own document — immune to overwrite by other saves
+    state.scores = scoresSnap.exists ? (scoresSnap.data() || {}) : (remoteData && remoteData.scores ? remoteData.scores : {});
     const migrated = await migrateFromLocalStorage(remoteData);
     if (!migrated && remoteData) {
       state.players       = remoteData.players    || [];
       state.teams         = remoteData.teams      || [];
       state.matches       = remoteData.matches    || [];
-      state.scores        = remoteData.scores     || {};
       state.dts           = remoteData.dts        || [];
       state.dtTeams       = remoteData.dtTeams    || {};
       state.dtCaptains    = remoteData.dtCaptains || {};
@@ -749,7 +753,7 @@ function purgeOrphanScores() {
       }
     }
   }
-  if (changed) save();
+  if (changed) DB_SCORES.set(state.scores).catch(e => console.error('Error purgando scores:', e));
 }
 
 // Ejecutar al iniciar
@@ -1262,23 +1266,26 @@ function resetTorneo() {
 
   // Guardar inmediatamente sin debounce
   clearTimeout(saveTimeout);
-  DB_DOC.set({
-    players: state.players,
-    teams: state.teams,
-    matches: [],
-    scores: {},
-    dts: state.dts,
-    dtTeams: state.dtTeams,
-    dtCaptains: state.dtCaptains,
-    dtFechaCompletado: state.dtFechaCompletado || {},
-    activeFecha: null,
-    mercadoAbierto: state.mercadoAbierto !== false,
-    mercadoCierre: null,
-    analisisFecha: '',
-    transfers: [],
-    dtTransfersFecha: {},
-    dtRosterHistory: {},
-  }, { merge: false }).then(() => {
+  Promise.all([
+    DB_DOC.set({
+      players: state.players,
+      teams: state.teams,
+      matches: [],
+      dts: state.dts,
+      dtTeams: state.dtTeams,
+      dtCaptains: state.dtCaptains,
+      dtFechaCompletado: state.dtFechaCompletado || {},
+      activeFecha: null,
+      mercadoAbierto: state.mercadoAbierto !== false,
+      mercadoCierre: null,
+      analisisFecha: '',
+      transfers: [],
+      dtTransfersFecha: {},
+      dtRosterHistory: {},
+      dtPagos: state.dtPagos || {},
+    }),
+    DB_SCORES.set({}),
+  ]).then(() => {
     alert('✅ Torneo reseteado. Podés cargar los partidos nuevos.');
     renderAdmin('backup');
   }).catch(e => {
@@ -1328,6 +1335,7 @@ function importData(input) {
       state.dtCaptains = data.dtCaptains || {};
       state.activeFecha= data.activeFecha|| null;
       save();
+      DB_SCORES.set(state.scores).catch(e => console.error('Error importando scores:', e));
       document.getElementById('import-alert').innerHTML = `<div class="alert alert-success" style="margin-top:0.75rem">✓ Datos importados correctamente — ${state.players.length} jugadores, ${state.teams.length} equipos, ${state.dts.length} DTs.</div>`;
       setTimeout(() => renderAdmin('jugadores'), 1500);
     } catch(err) {
@@ -2553,8 +2561,8 @@ function saveAndCloseScoring() {
   localModalScores = null;
   localModalPlayerId = null;
   localModalMatchId = null;
-  clearTimeout(saveTimeout);
-  save();
+  // Scores go to their own document — set() without merge, no path validation issues
+  DB_SCORES.set(state.scores).catch(e => console.error('Error guardando puntajes:', e));
   closeModal();
   renderVeedorPuntuar();
 }
