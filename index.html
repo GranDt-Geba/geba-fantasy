@@ -527,6 +527,7 @@ let state = {
   dtCaptains: {},
   activeFecha: null,
   mercadoAbierto: true,
+  transferesLibres: false,
   mercadoCierre: null, // timestamp ISO del cierre del mercado
   analisisFecha: '', // texto del admin para la fecha activa
   transfers: [],
@@ -558,8 +559,9 @@ function save() {
       dtCaptains:     state.dtCaptains,
       dtFechaCompletado: state.dtFechaCompletado || {},
       activeFecha:    state.activeFecha ?? null,
-      mercadoAbierto: state.mercadoAbierto !== false,
-      mercadoCierre:  state.mercadoCierre || null,
+      mercadoAbierto:   state.mercadoAbierto !== false,
+      transferesLibres: state.transferesLibres || false,
+      mercadoCierre:    state.mercadoCierre || null,
       analisisFecha:  state.analisisFecha || '',
       transfers:      state.transfers || [],
       dtTransfersFecha: state.dtTransfersFecha || {},
@@ -625,8 +627,9 @@ async function initApp() {
       state.dtCaptains    = remoteData.dtCaptains || {};
       state.dtFechaCompletado = remoteData.dtFechaCompletado || {};
       state.activeFecha   = remoteData.activeFecha|| null;
-      state.mercadoAbierto= remoteData.mercadoAbierto !== false;
-      state.mercadoCierre = remoteData.mercadoCierre || null;
+      state.mercadoAbierto  = remoteData.mercadoAbierto !== false;
+      state.transferesLibres = remoteData.transferesLibres || false;
+      state.mercadoCierre   = remoteData.mercadoCierre || null;
       state.analisisFecha  = remoteData.analisisFecha  || '';
       state.transfers     = remoteData.transfers  || [];
       state.dtTransfersFecha = remoteData.dtTransfersFecha || {};
@@ -657,8 +660,9 @@ async function initApp() {
       state.activeFecha    = d.activeFecha|| null;
       // Si cambió la fecha activa, resetear la vista del DT
       if (prevActiva !== state.activeFecha) dtViewFecha = null;
-      state.mercadoAbierto = d.mercadoAbierto !== false;
-      state.transfers      = d.transfers  || [];
+      state.mercadoAbierto  = d.mercadoAbierto !== false;
+      state.transferesLibres = d.transferesLibres || false;
+      state.transfers       = d.transfers  || [];
       state.dtTransfersFecha = d.dtTransfersFecha || {};
       if (!state.dtRosterHistory) state.dtRosterHistory = {};
       // Merge dtPagos — el local siempre gana si tiene un aviso enviado
@@ -1834,6 +1838,7 @@ function getDtTransfersThisFecha(dtId) {
   return ((state.dtTransfersFecha[dtId] || {})[state.activeFecha] || 0);
 }
 function canDtTransfer(dtId) {
+  if (state.transferesLibres) return true;
   if (!state.activeFecha || state.activeFecha === '1' || state.activeFecha === 1) return true;
   // Si completó el equipo en esta fecha o nunca → libre sin límite
   const fechaComp = Number((state.dtFechaCompletado || {})[dtId] || 0);
@@ -1894,6 +1899,13 @@ function renderAdminMercado() {
         <button class="btn ${btnClass}" onclick="toggleMercadoAdmin()">${btnLabel}</button>
       </div>
       <p style="font-size:0.8rem;color:var(--muted);margin-top:0.6rem">Cuando está cerrado, los DTs no pueden fichar ni vender jugadores.</p>
+      <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+        <div>
+          <div style="font-weight:600;font-size:0.9rem;color:${state.transferesLibres?'var(--gold)':'var(--text)'}">♾️ Transferencias libres</div>
+          <div style="font-size:0.75rem;color:var(--muted)">${state.transferesLibres ? 'Activadas — todos los DTs pueden transferir sin límite' : 'Desactivadas — límite normal de '+MAX_TRANSFERS_PER_FECHA+' por fecha'}</div>
+        </div>
+        <button class="btn ${state.transferesLibres?'btn-danger':'btn-primary'}" onclick="toggleTransferesLibres()">${state.transferesLibres?'Desactivar':'Activar'}</button>
+      </div>
     </div>
     <div class="card" style="border-color:#00D4FF33">
       <div class="card-title">⏱️ Cierre automático del mercado</div>
@@ -2221,6 +2233,11 @@ function denegarTodosDtPago() {
 
 function toggleMercadoAdmin() {
   state.mercadoAbierto = !state.mercadoAbierto;
+  save(); renderAdminMercado();
+}
+
+function toggleTransferesLibres() {
+  state.transferesLibres = !state.transferesLibres;
   save(); renderAdminMercado();
 }
 
@@ -3261,6 +3278,7 @@ function renderDtEquipo() {
         const fc = Number((state.dtFechaCompletado||{})[currentDtId]||0);
         // Ocultar si nunca completó el equipo, o lo completó en esta misma fecha
         if (fc === 0 || fc >= Number(f)) return '';
+        if (state.transferesLibres) return `<div class="stat-chip" style="border-color:#FFD60055">Transferencias: <span style="color:var(--gold)">♾️ Libres</span></div>`;
         const used = getDtTransfersThisFecha(currentDtId);
         const color = used >= MAX_TRANSFERS_PER_FECHA ? 'var(--red)' : 'var(--gold)';
         const border = used >= MAX_TRANSFERS_PER_FECHA ? 'var(--red)' : '#FFD60055';
