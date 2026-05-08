@@ -1731,11 +1731,12 @@ function setActiveFecha() {
   const val = document.getElementById('fecha-activa-sel').value;
   const prevFecha = state.activeFecha;
   state.activeFecha = val || null;
-  // Snapshot de la fecha ANTERIOR al activar la nueva
-  // Así el snapshot refleja el equipo final con todos los cambios del mercado
   if (prevFecha && val && Number(val) > Number(prevFecha)) {
     snapshotRostersForFecha(prevFecha, true);
   }
+  // Write activeFecha immediately — debounced save() can be beaten by onSnapshot
+  DB_DOC.update({ activeFecha: state.activeFecha ?? null })
+    .catch(e => console.error('Error guardando activeFecha:', e));
   save();
   renderAdmin('partidos');
 }
@@ -1754,6 +1755,8 @@ function manualSnapshot() {
 
 function setActiveFechaNull() {
   state.activeFecha = null;
+  DB_DOC.update({ activeFecha: null })
+    .catch(e => console.error('Error guardando activeFecha:', e));
   save();
   renderAdmin('partidos');
 }
