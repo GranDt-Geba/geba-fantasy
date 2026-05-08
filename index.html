@@ -544,30 +544,42 @@ let localModalPlayerId = null;
 let localModalMatchId = null;
 const pendingSavedScores = new Map();
 
+function buildPayload() {
+  return {
+    players:          state.players,
+    teams:            state.teams,
+    matches:          state.matches,
+    dts:              state.dts,
+    dtTeams:          state.dtTeams,
+    dtCaptains:       state.dtCaptains,
+    dtFechaCompletado: state.dtFechaCompletado || {},
+    activeFecha:      state.activeFecha ?? null,
+    mercadoAbierto:   state.mercadoAbierto !== false,
+    transferesLibres: state.transferesLibres || false,
+    mercadoCierre:    state.mercadoCierre || null,
+    analisisFecha:    state.analisisFecha || '',
+    transfers:        state.transfers || [],
+    dtTransfersFecha: state.dtTransfersFecha || {},
+    dtRosterHistory:  state.dtRosterHistory || {},
+    dtPagos:          state.dtPagos || {},
+  };
+}
+function saveNow() {
+  clearTimeout(saveTimeout);
+  isSaving = true;
+  const payload = buildPayload();
+  DB_DOC.set(payload)
+    .then(() => { isSaving = false; })
+    .catch(e => { console.error('Error guardando:', e); isSaving = false; });
+}
 function save() {
   clearTimeout(saveTimeout);
   isSaving = true;
   saveTimeout = setTimeout(() => {
-    DB_DOC.set({
-      players:        state.players,
-      teams:          state.teams,
-      matches:        state.matches,
-      dts:            state.dts,
-      dtTeams:        state.dtTeams,
-      dtCaptains:     state.dtCaptains,
-      dtFechaCompletado: state.dtFechaCompletado || {},
-      activeFecha:    state.activeFecha ?? null,
-      mercadoAbierto:   state.mercadoAbierto !== false,
-      transferesLibres: state.transferesLibres || false,
-      mercadoCierre:    state.mercadoCierre || null,
-      analisisFecha:  state.analisisFecha || '',
-      transfers:      state.transfers || [],
-      dtTransfersFecha: state.dtTransfersFecha || {},
-      dtRosterHistory: state.dtRosterHistory || {},
-      dtPagos:        state.dtPagos || {},
-    })
-    .then(() => { isSaving = false; })
-    .catch(e => { console.error('Error guardando:', e); isSaving = false; });
+    const payload = buildPayload();
+    DB_DOC.set(payload)
+      .then(() => { isSaving = false; })
+      .catch(e => { console.error('Error guardando:', e); isSaving = false; });
   }, 400);
 }
 
@@ -1734,10 +1746,7 @@ function setActiveFecha() {
   if (prevFecha && val && Number(val) > Number(prevFecha)) {
     snapshotRostersForFecha(prevFecha, true);
   }
-  // Write activeFecha immediately — debounced save() can be beaten by onSnapshot
-  DB_DOC.update({ activeFecha: state.activeFecha ?? null })
-    .catch(e => console.error('Error guardando activeFecha:', e));
-  save();
+  saveNow();
   renderAdmin('partidos');
 }
 
@@ -1755,9 +1764,7 @@ function manualSnapshot() {
 
 function setActiveFechaNull() {
   state.activeFecha = null;
-  DB_DOC.update({ activeFecha: null })
-    .catch(e => console.error('Error guardando activeFecha:', e));
-  save();
+  saveNow();
   renderAdmin('partidos');
 }
 
