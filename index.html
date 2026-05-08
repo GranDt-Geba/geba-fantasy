@@ -545,6 +545,8 @@ let localModalMatchId = null;
 const pendingSavedScores = new Map();
 
 function buildPayload() {
+  // activeFecha, mercadoAbierto, mercadoCierre, transferesLibres, analisisFecha
+  // are written ONLY via update() — never included here, so DT saves can't overwrite them
   return {
     players:          state.players,
     teams:            state.teams,
@@ -553,16 +555,14 @@ function buildPayload() {
     dtTeams:          state.dtTeams,
     dtCaptains:       state.dtCaptains,
     dtFechaCompletado: state.dtFechaCompletado || {},
-    activeFecha:      state.activeFecha ?? null,
-    mercadoAbierto:   state.mercadoAbierto !== false,
-    transferesLibres: state.transferesLibres || false,
-    mercadoCierre:    state.mercadoCierre || null,
-    analisisFecha:    state.analisisFecha || '',
     transfers:        state.transfers || [],
     dtTransfersFecha: state.dtTransfersFecha || {},
     dtRosterHistory:  state.dtRosterHistory || {},
     dtPagos:          state.dtPagos || {},
   };
+}
+function saveAdminFields(fields) {
+  DB_DOC.update(fields).catch(e => console.error('Error guardando config:', e));
 }
 function saveNow() {
   clearTimeout(saveTimeout);
@@ -1745,8 +1745,9 @@ function setActiveFecha() {
   state.activeFecha = val || null;
   if (prevFecha && val && Number(val) > Number(prevFecha)) {
     snapshotRostersForFecha(prevFecha, true);
+    save(); // save snapshot data
   }
-  saveNow();
+  saveAdminFields({ activeFecha: state.activeFecha ?? null });
   renderAdmin('partidos');
 }
 
@@ -1764,7 +1765,7 @@ function manualSnapshot() {
 
 function setActiveFechaNull() {
   state.activeFecha = null;
-  saveNow();
+  saveAdminFields({ activeFecha: null });
   renderAdmin('partidos');
 }
 
@@ -2152,12 +2153,12 @@ function denegarTodosDtPago() {
 
 function toggleMercadoAdmin() {
   state.mercadoAbierto = !state.mercadoAbierto;
-  save(); renderAdminMercado();
+  saveAdminFields({ mercadoAbierto: state.mercadoAbierto }); renderAdminMercado();
 }
 
 function toggleTransferesLibres() {
   state.transferesLibres = !state.transferesLibres;
-  save(); renderAdminMercado();
+  saveAdminFields({ transferesLibres: state.transferesLibres }); renderAdminMercado();
 }
 
 function renderAdminDts() {
@@ -4014,7 +4015,7 @@ function getNextSabado20() {
 function guardarAnalisis() {
   const val = document.getElementById('analisis-input').value;
   state.analisisFecha = val;
-  save();
+  saveAdminFields({ analisisFecha: val });
   alert('Análisis publicado.');
 }
 
@@ -4022,13 +4023,13 @@ function guardarCierre() {
   const val = document.getElementById('cierre-input').value;
   if (!val) return;
   state.mercadoCierre = new Date(val).toISOString();
-  save();
+  saveAdminFields({ mercadoCierre: state.mercadoCierre });
   renderAdminMercado();
 }
 
 function resetCierre() {
   state.mercadoCierre = new Date(getNextSabado20()).toISOString();
-  save();
+  saveAdminFields({ mercadoCierre: state.mercadoCierre });
   renderAdminMercado();
 }
 
